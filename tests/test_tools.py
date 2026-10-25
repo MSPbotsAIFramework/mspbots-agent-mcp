@@ -220,7 +220,7 @@ def test_invalid_bare_tool_ids(keys, expected_bad):
 
 @pytest.mark.asyncio
 async def test_clear_sop_section_has_real_enum_constraint():
-    # SOP §3 (02-开发阶段SOP.md): enum-shaped params must carry a real JSON
+    # SOP §3 (02-dev-phase-SOP.md): enum-shaped params must carry a real JSON
     # Schema `enum`, not just enum values mentioned in prose. section not
     # only affects tool_use accuracy — it's a destructive action, so a
     # client that skips the enum entirely would only find out it guessed
