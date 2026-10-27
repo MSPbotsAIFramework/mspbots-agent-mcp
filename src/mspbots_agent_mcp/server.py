@@ -13,9 +13,12 @@ from .config import Settings
 # Per-request credential isolation via contextvars.
 # GatewayTokenMiddleware sets this before the MCP handler runs.
 # Python asyncio copies context per task, so concurrent SSE connections are isolated.
-# Value is (access_token, host, tenant_id). tenant_id is forwarded to the
-# downstream Agent API as an X_Tenant_ID header.
-_gateway_creds_var: contextvars.ContextVar[tuple[str, str, str] | None] = contextvars.ContextVar(
+# Value is (access_token, host, tenant_id, run_origin). tenant_id is forwarded to the
+# downstream Agent API as an X_Tenant_ID header. run_origin (PRD-21389) is forwarded as
+# X-Run-Origin -- empty string when the caller sent no X-Channel-Run-Origin header, which
+# mb-platform-agent's self-configuration gate treats as non-exempt (fail-closed), not as
+# "no opinion".
+_gateway_creds_var: contextvars.ContextVar[tuple[str, str, str, str] | None] = contextvars.ContextVar(
     "mspbots_agent_gateway_creds", default=None
 )
 
@@ -25,8 +28,8 @@ def get_client_from_context(settings: Settings) -> AgentClient | None:
     creds = _gateway_creds_var.get()
     if not creds:
         return None
-    token, host, tenant_id = creds
-    return AgentClient(token, host, tenant_id)
+    token, host, tenant_id, run_origin = creds
+    return AgentClient(token, host, tenant_id, run_origin)
 
 
 class GatewayTokenMiddleware:
@@ -55,6 +58,10 @@ class GatewayTokenMiddleware:
         token = request.headers.get("x-msp-token")
         tenant_id = request.headers.get("x-msp-tenant-id")
         host = request.headers.get("x-msp-host")
+        # PRD-21389: optional -- absent simply forwards as "", which the receiving gate in
+        # mb-platform-agent treats as non-exempt. Unlike the three headers above, a caller that
+        # predates this change (or an MCP client that is not mspbots-agentos) must not be 401'd.
+        run_origin = request.headers.get("x-channel-run-origin") or ""
         if not token or not tenant_id or not host:
             response = JSONResponse(
                 {
@@ -72,7 +79,7 @@ class GatewayTokenMiddleware:
             await response(scope, receive, send)
             return
 
-        ctx_token = _gateway_creds_var.set((token, host, tenant_id))
+        ctx_token = _gateway_creds_var.set((token, host, tenant_id, run_origin))
         try:
             await self.app(scope, receive, send)
         finally:
