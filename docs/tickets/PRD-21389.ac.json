@@ -1,0 +1,114 @@
+[
+  {
+    "id": "TC1",
+    "ac": "AC1",
+    "text": "Given an api-key-authenticated call with header X-Run-Origin: task hits PUT /api/agents/:id/connectors/:cid/tools (mb-platform-agent, the route code-comments as \"MCP: set_connector_tools\"), When it tries to enable or disable a tool, Then the request is refused with the fixed message \"This agent's configuration can't be changed during a triggered run\" and the connector's allowedTools/disabledTools in .mcp.json are unchanged.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC2",
+    "ac": "AC1",
+    "text": "Given the same route called by a normal (non-api-key, session-authenticated) request from the SOP Author's Connector Tools panel, When a human toggles a tool switch, Then the write succeeds exactly as today (no regression for the builder UI).",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC3",
+    "ac": "AC2",
+    "text": "Given mspbots-agent-mcp's mspbotsagent_upsert_agent_permissions is invoked during a run whose origin is anything other than chat/build (e.g. a schedule-triggered run, origin=cron), When it tries to change permission/interrupt_on/owners, Then mb-platform-agent's shared PUT /api/agents/:id refuses the write and the tool call returns the fixed refusal error; the agent's permissions are unchanged afterward.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC4",
+    "ac": "AC2",
+    "text": "Given the same mspbotsagent_upsert_agent_permissions tool invoked from the agent's own interactive chat (origin=chat) or the SOP Author builder session (origin=build), Then the write succeeds as it does today.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC5",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_upsert_trigger or mspbotsagent_delete_trigger is called, Then POST|PUT|DELETE /api/tasks(/:taskId) refuses the write with the fixed refusal error.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC6",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_upsert_agent_evaluation is called, Then the shared PUT /api/agents/:id refuses the write (review rules unchanged).",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC7",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_set_sop_purpose is called (representative of the 7 set_sop_*/clear_sop_section SOP-author tools, which all share the same PUT {value} contract), Then PUT /api/agents/:id/sop-author/purpose refuses the write.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC8",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_create_agent_skill is called (representative of create/update_agent_skill_files/delete_agent_skill), Then POST /api/agents/:id/skills/create refuses the write and no skill is created.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC9",
+    "ac": "AC3",
+    "text": "Given an api-key-authenticated call with X-Run-Origin: task sends a `model` field to PUT /api/agents/:id directly (no mspbots-agent-mcp tool exposes this field today -- this guards the shared route for when one does, since the same PUT backs mspbotsagent_upsert_agent_permissions), Then the write is refused and the agent's model is unchanged.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC10",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_run_trigger is called (it executes an existing trigger, it does not change configuration), Then the call is NOT refused -- confirms the gate only covers configuration-changing routes, not every mspbotsagent_* tool.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC11",
+    "ac": "AC4",
+    "text": "Given a connector tool was disabled by a person via the SOP Author Connector Tools panel (chat/build-origin write, succeeds per TC2), When a later task-origin run calls the connector-tools route to re-enable that same tool, Then the call is refused and the tool is still disabled on the agent's next .mcp.json sync.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC12",
+    "ac": "AC5",
+    "text": "Given the SOP Author builder session (origin=build) is editing an agent's SOP, When mspbotsagent_set_sop_purpose or mspbotsagent_upsert_agent_permissions is called from within that session, Then the write succeeds -- builder/maintenance chat is unaffected by this change.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC13",
+    "ac": "AC6",
+    "text": "Given a task-origin run attempts a refused call (e.g. mspbotsagent_upsert_agent_permissions), When the run finishes, Then the run's thread/run-detail history on agent.mspbots.ai shows a tool-call error entry naming the tool and the refusal reason.",
+    "type": "manual",
+    "steps": [
+      "On INT, after the 3-repo change is deployed, schedule or run-now a trigger run for an agent whose system MCP includes mspbotsagent_upsert_agent_permissions",
+      "Have the run's prompt explicitly attempt to call mspbotsagent_upsert_agent_permissions",
+      "Open the run's detail page / thread history on agent.mspbots.ai"
+    ],
+    "expect": "A tool-call entry for mspbotsagent_upsert_agent_permissions shows an error result containing \"This agent's configuration can't be changed during a triggered run\"; the agent's permission config is unchanged",
+    "result": "untested",
+    "evidence": ""
+  },
+  {
+    "id": "TC14",
+    "ac": "AC2",
+    "text": "Given tenant B's api-key (X_Tenant_ID=B) and X-Run-Origin: chat calls PUT /api/agents/:id for an agent that belongs to tenant A, Then the existing per-tenant scoping (schema-per-tenant DB access) 404s/denies before the new run-origin gate is even reached -- confirms the new gate composes with, and does not weaken, existing cross-tenant isolation.",
+    "type": "auto",
+    "tests": []
+  },
+  {
+    "id": "TC15",
+    "ac": "AC1",
+    "text": "Given an api-key-authenticated call to a configuration-changing route arrives with NO X-Run-Origin header at all (e.g. an unpatched mspbots-agent-mcp instance, or a direct API-key call bypassing the MCP layer), Then the call is refused (fail-closed: missing/unrecognized origin is treated as a production run, not silently allowed).",
+    "type": "auto",
+    "tests": []
+  }
+]
