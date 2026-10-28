@@ -79,18 +79,25 @@ class AgentClient:
     relies on it for routing).
     """
 
-    def __init__(self, access_token: str, host: str, tenant_id: str):
+    def __init__(self, access_token: str, host: str, tenant_id: str, run_origin: str = ""):
         self._token = access_token
         self._tenant_id = tenant_id
         self._base_url = host.rstrip("/") + _APP_PREFIX
+        # PRD-21389: forwarded from the incoming request's X-Channel-Run-Origin header (set by
+        # mb-platform-agentos on every MCP tool call it makes). Empty string when absent -- the
+        # receiving gate in mb-platform-agent treats that as a non-exempt (refused) origin.
+        self._run_origin = run_origin
 
     def _headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "X-API-Key": self._token,
             "X_Tenant_ID": self._tenant_id,
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        if self._run_origin:
+            headers["X-Run-Origin"] = self._run_origin
+        return headers
 
     def _clean_params(self, params: dict | None) -> dict:
         if not params:
