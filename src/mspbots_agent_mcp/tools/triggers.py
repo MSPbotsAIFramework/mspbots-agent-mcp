@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from .._json import dump_json_capped
+from .._json import dump_json
 from ..api_client import AgentClient, AgentError
 from ._common import NO_TOKEN
 
@@ -38,7 +38,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
                 "/api/tasks",
                 params={"agentId": agent_id, "page": page, "pageSize": page_size},
             )
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -158,7 +158,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
                 result = await client.post("/api/tasks", body)
             else:
                 result = await client.put(f"/api/tasks/{task_id}", body)
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -175,7 +175,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.delete(f"/api/tasks/{task_id}")
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -194,11 +194,17 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.get("/api/tasks/trigger-catalog")
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
-    @mcp.tool()
+    # NOTE: mspbotsagent_run_trigger is temporarily hidden from external
+    # clients: its @mcp.tool decorator below is commented out, so it no
+    # longer appears in tools/list and cannot be called. The implementation
+    # is left untouched; re-expose by uncommenting the decorator (and the
+    # matching entry in tests/test_tools.py).
+
+    # @mcp.tool()
     async def mspbotsagent_run_trigger(
         task_id: Annotated[str, Field(description="Trigger to run now.")],
     ) -> str:
@@ -212,6 +218,6 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.post(f"/api/tasks/{task_id}/run")
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()

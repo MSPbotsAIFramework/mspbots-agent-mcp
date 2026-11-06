@@ -1,0 +1,173 @@
+[
+  {
+    "id": "TC1",
+    "ac": "AC1",
+    "text": "Given an api-key-authenticated call with header X-Run-Origin: task hits PUT /api/agents/:id/connectors/:cid/tools (mb-platform-agent, the route code-comments as \"MCP: set_connector_tools\"), When it tries to enable or disable a tool, Then the request is refused with the fixed message \"This agent's configuration can't be changed during a triggered run\" and the connector's allowedTools/disabledTools in .mcp.json are unchanged.",
+    "type": "auto",
+    "tests": [
+      "service/aegra/run-origin-guard.test.ts: an api-key caller with a production origin is refused with the fixed message",
+      "service/capability/route-run-origin-guard.test.ts: PUT /api/agents/:id/connectors/:cid/tools (set_connector_tools, TC1) calls the guard"
+    ],
+    "result": "pass",
+    "evidence": "service/capability/route.ts:328-339 calls requireNonProductionOrigin(c) before requireAgentAccess/updateAgentTools, so a non-exempt origin returns the fixed message and updateAgentTools() never runs (verified by construction + source pin). Guard predicate itself verified in service/aegra/run-origin-guard.test.ts ('an api-key caller with a production origin is refused with the fixed message', pass). Full command: `node --test service/capability/route-run-origin-guard.test.ts service/aegra/run-origin-guard.test.ts` -> 13 passed, 0 failed."
+  },
+  {
+    "id": "TC2",
+    "ac": "AC1",
+    "text": "Given the same route called by a normal (non-api-key, session-authenticated) request from the SOP Author's Connector Tools panel, When a human toggles a tool switch, Then the write succeeds exactly as today (no regression for the builder UI).",
+    "type": "auto",
+    "tests": [
+      "service/aegra/run-origin-guard.test.ts: a normal session-authenticated caller (no api-key grant) is never gated, any origin"
+    ],
+    "result": "pass",
+    "evidence": "requireNonProductionOrigin() returns null unconditionally when hasApiKeyGrant() is false (service/aegra/run-origin-guard.ts:40) -- a normal session-authenticated SOP Author UI request never enters runWithApiKeyGrant (service/common/route.ts's applyApiKeyPolicy only grants it to a route that both opted in AND verified an api-key token), so this route's existing requireAgentAccess()+updateAgentTools() path is reached unchanged. Verified directly in service/aegra/run-origin-guard.test.ts ('a normal session-authenticated caller (no api-key grant) is never gated, any origin', pass)."
+  },
+  {
+    "id": "TC3",
+    "ac": "AC2",
+    "text": "Given mspbots-agent-mcp's mspbotsagent_upsert_agent_permissions is invoked during a run whose origin is anything other than chat/build (e.g. a schedule-triggered run, origin=cron), When it tries to change permission/interrupt_on/owners, Then mb-platform-agent's shared PUT /api/agents/:id refuses the write and the tool call returns the fixed refusal error; the agent's permissions are unchanged afterward.",
+    "type": "auto",
+    "tests": [
+      "service/agent/route-run-origin-guard.test.ts: updateAgent (permissions/evaluation/approval/model, TC3/TC6/TC9) calls the guard"
+    ],
+    "result": "pass",
+    "evidence": "service/agent/route.ts:542-546 (updateAgent, backing PUT /api/agents/:id) calls requireNonProductionOrigin(c) and returns fail(...) before any patch is applied. Source pin: service/agent/route-run-origin-guard.test.ts, pass. Refusal-for-non-exempt-origin logic: service/aegra/run-origin-guard.test.ts, pass."
+  },
+  {
+    "id": "TC4",
+    "ac": "AC2",
+    "text": "Given the same mspbotsagent_upsert_agent_permissions tool invoked from the agent's own interactive chat (origin=chat) or the SOP Author builder session (origin=build), Then the write succeeds as it does today.",
+    "type": "auto",
+    "tests": [
+      "service/aegra/run-origin-guard.test.ts: an api-key caller with origin=chat is allowed (TC4)"
+    ],
+    "result": "pass",
+    "evidence": "requireNonProductionOrigin() returns null for origin=chat even with an api-key grant (service/aegra/run-origin-guard.ts:41-42), so updateAgent proceeds to loadAgent/hasAgentAccessById/patch unchanged. Verified directly: service/aegra/run-origin-guard.test.ts 'an api-key caller with origin=chat is allowed (TC4)', pass."
+  },
+  {
+    "id": "TC5",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_upsert_trigger or mspbotsagent_delete_trigger is called, Then POST|PUT|DELETE /api/tasks(/:taskId) refuses the write with the fixed refusal error.",
+    "type": "auto",
+    "tests": [
+      "service/task/route-run-origin-guard.test.ts: createTask (upsert_trigger / create) calls the guard",
+      "service/task/route-run-origin-guard.test.ts: updateTask (upsert_trigger / update) calls the guard",
+      "service/task/route-run-origin-guard.test.ts: deleteTask (delete_trigger) calls the guard"
+    ],
+    "result": "pass",
+    "evidence": "service/task/route.ts: createTask (POST /api/tasks), updateTask (PUT /api/tasks/:id) and deleteTask (DELETE /api/tasks/:id) all call requireNonProductionOrigin(c) and return fail(deniedOrigin) before any DB write. Source pins: service/task/route-run-origin-guard.test.ts, 3/3 pass."
+  },
+  {
+    "id": "TC6",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_upsert_agent_evaluation is called, Then the shared PUT /api/agents/:id refuses the write (review rules unchanged).",
+    "type": "auto",
+    "tests": [
+      "service/agent/route-run-origin-guard.test.ts: updateAgent (permissions/evaluation/approval/model, TC3/TC6/TC9) calls the guard"
+    ],
+    "result": "pass",
+    "evidence": "mspbotsagent_upsert_agent_evaluation writes via the same shared PUT /api/agents/:id (mspbots-agent-mcp/src/mspbots_agent_mcp/tools/agents.py:324) gated by updateAgent's requireNonProductionOrigin() call (service/agent/route.ts:546). Same evidence as TC3."
+  },
+  {
+    "id": "TC7",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_set_sop_purpose is called (representative of the 7 set_sop_*/clear_sop_section SOP-author tools, which all share the same PUT {value} contract), Then PUT /api/agents/:id/sop-author/purpose refuses the write.",
+    "type": "auto",
+    "tests": [
+      "service/sop/route-run-origin-guard.test.ts: the 5-field SOP-author PUT loop (set_sop_name/_source/_purpose/_data_sources/_procedure, TC7) calls the guard"
+    ],
+    "result": "pass",
+    "evidence": "service/sop/routes.ts's AUTHOR_FIELDS PUT loop (PUT /api/agents/:agentId/sop-author/{name,source,purpose,procedure,data-sources-list}) calls requireNonProductionOrigin(c) and returns a 403 FORBIDDEN envelope before authorSopForAgent/updateSopAuthorSection run. Source pin: service/sop/route-run-origin-guard.test.ts, pass."
+  },
+  {
+    "id": "TC8",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_create_agent_skill is called (representative of create/update_agent_skill_files/delete_agent_skill), Then POST /api/agents/:id/skills/create refuses the write and no skill is created.",
+    "type": "auto",
+    "tests": [
+      "service/capability/route-run-origin-guard.test.ts: POST /api/agents/:id/skills/create (create_agent_skill) calls the guard"
+    ],
+    "result": "pass",
+    "evidence": "service/capability/route.ts: POST /api/agents/:id/skills/create calls requireNonProductionOrigin(c) and returns the refusal before createAgentSkill() runs. Source pin: service/capability/route-run-origin-guard.test.ts, pass."
+  },
+  {
+    "id": "TC9",
+    "ac": "AC3",
+    "text": "Given an api-key-authenticated call with X-Run-Origin: task sends a `model` field to PUT /api/agents/:id directly (no mspbots-agent-mcp tool exposes this field today -- this guards the shared route for when one does, since the same PUT backs mspbotsagent_upsert_agent_permissions), Then the write is refused and the agent's model is unchanged.",
+    "type": "auto",
+    "tests": [
+      "service/agent/route-run-origin-guard.test.ts: updateAgent (permissions/evaluation/approval/model, TC3/TC6/TC9) calls the guard"
+    ],
+    "result": "pass",
+    "evidence": "`model` is only writable through the same PUT /api/agents/:id (service/agent/route.ts:478,666-680,703) gated at the top of updateAgent by requireNonProductionOrigin(). Same evidence as TC3; OQ2 notes no mspbots-agent-mcp tool sends `model` today, so this is defense-in-depth exercised directly at the route."
+  },
+  {
+    "id": "TC10",
+    "ac": "AC3",
+    "text": "Given a task-origin run, When mspbotsagent_run_trigger is called (it executes an existing trigger, it does not change configuration), Then the call is NOT refused -- confirms the gate only covers configuration-changing routes, not every mspbotsagent_* tool.",
+    "type": "auto",
+    "tests": [
+      "service/task/route-run-origin-guard.test.ts: runTask (run_trigger) is deliberately NOT gated -- it executes, it does not configure (TC10)"
+    ],
+    "result": "pass",
+    "evidence": "runTask (POST /api/tasks/:id/run, backing mspbotsagent_run_trigger) contains no call to requireNonProductionOrigin -- confirmed by a negative source pin (assert.doesNotMatch) in service/task/route-run-origin-guard.test.ts, pass."
+  },
+  {
+    "id": "TC11",
+    "ac": "AC4",
+    "text": "Given a connector tool was disabled by a person via the SOP Author Connector Tools panel (chat/build-origin write, succeeds per TC2), When a later task-origin run calls the connector-tools route to re-enable that same tool, Then the call is refused and the tool is still disabled on the agent's next .mcp.json sync.",
+    "type": "auto",
+    "tests": [
+      "service/capability/route-run-origin-guard.test.ts: PUT /api/agents/:id/connectors/:cid/tools (set_connector_tools, TC1) calls the guard"
+    ],
+    "result": "pass",
+    "evidence": "By construction: the connector-tools route returns the refusal (service/capability/route.ts:331-333) strictly before calling updateAgentTools() (the only function that mutates .mcp.json's allowedTools/disabledTools), so a refused re-enable attempt cannot change persisted state -- same source pin as TC1. The human-disable half of this case (TC2, chat/build path) is pre-existing, unaffected route behavior. Full live round trip (disable as a human, then attempt re-enable from a real triggered run, then read back .mcp.json) was not executed against a live server: this sandbox's dist/server.js cannot boot (AI_GATEWAY_URL is not set in the shared .env, a pre-existing gap -- see Self-test) and local API routes have no path to real session auth either way (see qa-execution.md's local-auth blind spot). Logged as a local blind spot, not a failure."
+  },
+  {
+    "id": "TC12",
+    "ac": "AC5",
+    "text": "Given the SOP Author builder session (origin=build) is editing an agent's SOP, When mspbotsagent_set_sop_purpose or mspbotsagent_upsert_agent_permissions is called from within that session, Then the write succeeds -- builder/maintenance chat is unaffected by this change.",
+    "type": "auto",
+    "tests": [
+      "service/aegra/run-origin-guard.test.ts: an api-key caller with origin=build is allowed (TC12)"
+    ],
+    "result": "pass",
+    "evidence": "requireNonProductionOrigin() returns null for origin=build even with an api-key grant (service/aegra/run-origin-guard.ts:41-42), so set_sop_purpose/upsert_agent_permissions calls made from the SOP Author builder session (origin=build, per the Current state entry-point table) reach their existing handlers unchanged. Verified directly: service/aegra/run-origin-guard.test.ts 'an api-key caller with origin=build is allowed (TC12)', pass."
+  },
+  {
+    "id": "TC13",
+    "ac": "AC6",
+    "text": "Given a task-origin run attempts a refused call (e.g. mspbotsagent_upsert_agent_permissions), When the run finishes, Then the run's thread/run-detail history on agent.mspbots.ai shows a tool-call error entry naming the tool and the refusal reason.",
+    "type": "manual",
+    "steps": [
+      "On INT, after the 3-repo change is deployed, schedule or run-now a trigger run for an agent whose system MCP includes mspbotsagent_upsert_agent_permissions",
+      "Have the run's prompt explicitly attempt to call mspbotsagent_upsert_agent_permissions",
+      "Open the run's detail page / thread history on agent.mspbots.ai"
+    ],
+    "expect": "A tool-call entry for mspbotsagent_upsert_agent_permissions shows an error result containing \"This agent's configuration can't be changed during a triggered run\"; the agent's permission config is unchanged",
+    "result": "untested",
+    "evidence": "Manual case, requires a deployed INT environment per its own steps; not executed in this dev-leg sandbox (no live INT deploy available here). Unchanged from design -- flagged for post-merge/INT verification."
+  },
+  {
+    "id": "TC14",
+    "ac": "AC2",
+    "text": "Given tenant B's api-key (X_Tenant_ID=B) and X-Run-Origin: chat calls PUT /api/agents/:id for an agent that belongs to tenant A, Then the existing per-tenant scoping (schema-per-tenant DB access) 404s/denies before the new run-origin gate is even reached -- confirms the new gate composes with, and does not weaken, existing cross-tenant isolation.",
+    "type": "auto",
+    "tests": [
+      "service/agent/route-run-origin-guard.test.ts: updateAgent still loads the agent through the caller's own tenant-scoped getDb() (TC14)"
+    ],
+    "result": "pass",
+    "evidence": "updateAgent still calls loadAgent(id) (service/agent/route.ts:301, getDb()-scoped -- schema-per-tenant) and 404s with fail(\"Agent not found\") when the row is absent from the caller's own tenant DB; this is unchanged by the new guard, which composes with it rather than replacing it. Source pin: service/agent/route-run-origin-guard.test.ts 'updateAgent still loads the agent through the caller's own tenant-scoped getDb() (TC14)', pass. TC14's own scenario uses X-Run-Origin: chat specifically so the new gate never intervenes, isolating the assertion to tenant scoping alone (unchanged code path) -- no live cross-tenant DB round trip was executed in this sandbox (DEV01 has no network path to the live tenant DBs, a pre-existing environment constraint, see reference_sandbox_no_network_to_live_services)."
+  },
+  {
+    "id": "TC15",
+    "ac": "AC1",
+    "text": "Given an api-key-authenticated call to a configuration-changing route arrives with NO X-Run-Origin header at all (e.g. an unpatched mspbots-agent-mcp instance, or a direct API-key call bypassing the MCP layer), Then the call is refused (fail-closed: missing/unrecognized origin is treated as a production run, not silently allowed).",
+    "type": "auto",
+    "tests": [
+      "service/aegra/run-origin-guard.test.ts: an api-key caller with no X-Run-Origin header at all is refused -- fail-closed (TC15)"
+    ],
+    "result": "pass",
+    "evidence": "requireNonProductionOrigin() refuses when the header is absent or empty (service/aegra/run-origin-guard.ts:41-43, fail-closed default). Verified directly: service/aegra/run-origin-guard.test.ts 'an api-key caller with no X-Run-Origin header at all is refused -- fail-closed (TC15)' and '...with an empty X-Run-Origin header is refused -- fail-closed', both pass."
+  }
+]

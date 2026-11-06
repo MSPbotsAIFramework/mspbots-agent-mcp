@@ -5,11 +5,12 @@ function over an already-fetched payload, so it is tested directly. The
 no-credentials path is exercised through the registered tool with a
 client_factory that returns None.
 
-Why the truncation tests carry the weight here: the tool's output budget
-(_json.MAX_CHARS) is smaller than a full page of `breakdown` at the API's
-maximum pageSize, and the generic capper trims the largest list *silently*.
-A model would then read a short breakdown next to a full `breakdownTotal`
-and conclude it had seen every agent. AC7 forbids that state.
+Why the truncation tests carry the weight here: a full page of `breakdown`
+at the API's maximum pageSize is more than a model can absorb, so this tool
+trims it — and trimming it silently would let a model read a short breakdown
+next to a full `breakdownTotal` and conclude it had seen every agent. AC7
+forbids that state. `_BREAKDOWN_BUDGET` is this tool's own budget; `_json`
+caps nothing any more, so this is the only place output is bounded.
 """
 
 import json
@@ -17,8 +18,11 @@ import json
 import pytest
 from mcp.server.fastmcp import FastMCP
 
-from mspbots_agent_mcp._json import MAX_CHARS
-from mspbots_agent_mcp.tools.usage import _shape_overview, register
+from mspbots_agent_mcp.tools.usage import (
+    _BREAKDOWN_BUDGET as MAX_CHARS,
+    _shape_overview,
+    register,
+)
 
 
 def _row(i: int) -> dict:

@@ -1,10 +1,10 @@
-# 模块文档索引
+# Module Documentation Index
 
-代码路径 / 产品区域 → 模块文档。开工前按工单涉及的区域查这张表，命中多个就都读。
+Code path / product area -> module document. Before starting work, look up the areas a ticket touches in this table; if several match, read them all.
 
-| 区域 | 代码路径 | 文档 |
+| Area | Code path | Document |
 |---|---|---|
-| MCP 工具层（加/改一个 `mspbotsagent_*` 工具） | `src/mspbots_agent_mcp/tools/` | [mcp-tools.md](mcp-tools.md) |
+| MCP tool layer (adding/changing a `mspbotsagent_*` tool) | `src/mspbots_agent_mcp/tools/` | [mcp-tools.md](mcp-tools.md) |
 
-未列出的区域 = 还没有累积事实。**不要为了「有文档」去建一份近乎空白的**：
-一份空文档比缺一行索引更糟，下一个读者会把它的沉默当成「这里没什么要知道的」。
+An area not listed means no facts have accumulated yet. **Do not create a near-empty document just to "have a doc"**:
+an empty document is worse than a missing index row, because the next reader will take its silence to mean "there is nothing to know here".

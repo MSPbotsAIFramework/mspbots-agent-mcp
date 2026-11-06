@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from .._json import dump_json_capped, error_envelope
+from .._json import dump_json, error_envelope
 from ..api_client import AgentClient, AgentError
 from ._common import NO_TOKEN
 
@@ -26,10 +26,34 @@ _KNOWN_BUILTIN_TOOL_IDS = {
     "read_file",
     "write_file",
     "edit_file",
-    "download",
+    "artifact",
+    "show",
     "task",
     "start_async_task",
 }
+
+# PRD-21381: `download` was the pre-2026-09-09 name for the delivery tool, now
+# `artifact`; `upload_artifact` was a short-lived, already-retired intermediate
+# name (the platform's own catalog split delivery into `artifact`/`show` without
+# ever updating this validator). Mirrors mb-platform-agent's withCurrentToolKeys().
+_LEGACY_BARE_TOOL_ALIASES = {"download": "artifact", "upload_artifact": "artifact"}
+
+
+def _normalize_legacy_tool_keys(keys: Any) -> Any:
+    """Rename legacy bare tool ids (download, upload_artifact) to the current
+    `artifact`, mirroring mb-platform-agent's withCurrentToolKeys(). A key
+    already on the current name wins if both are present.
+    """
+    if not isinstance(keys, dict):
+        return keys
+    out = dict(keys)
+    for legacy, current in _LEGACY_BARE_TOOL_ALIASES.items():
+        if legacy not in out:
+            continue
+        if current not in out:
+            out[current] = out[legacy]
+        del out[legacy]
+    return out
 
 
 def _invalid_bare_tool_ids(keys: Any) -> list[str]:
@@ -42,6 +66,23 @@ def _invalid_bare_tool_ids(keys: Any) -> list[str]:
     if not isinstance(keys, dict):
         return []
     return [k for k in keys if isinstance(k, str) and "." not in k and k not in _KNOWN_BUILTIN_TOOL_IDS]
+
+
+def _rules_missing_rubric(rules: Any) -> list[int]:
+    """Indexes of evaluation rules with no usable `rubric`.
+
+    The platform silently drops the whole `review` when a rule has no
+    rubric, yet still answers the PUT with success — so the write looked
+    fine and the read-back came back `review: null` (PRD-20168). Reject
+    here instead, before anything is sent.
+    """
+    return [
+        i
+        for i, rule in enumerate(rules or [])
+        if not isinstance(rule, dict)
+        or not isinstance(rule.get("rubric"), str)
+        or not rule["rubric"].strip()
+    ]
 
 
 async def _fetch_agent_data(client: AgentClient, agent_id: str) -> Any:
@@ -126,7 +167,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             "tools": data.get("tools"),
             "policyError": data.get("policyError"),
         }
-        return dump_json_capped(projected)
+        return dump_json(projected)
 
     @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
     async def mspbotsagent_upsert_agent_permissions(
@@ -201,21 +242,25 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
                          permission. allowed_decisions: "approve" | "edit" |
                          "reject".
 
-        THE KEYS ARE THESE SEVEN AND NOTHING ELSE
+        THE KEYS ARE THESE EIGHT AND NOTHING ELSE
           Connector (MCP) tool ids are NOT valid keys here and are rejected —
           not "qbo.createInvoice", not "ClickUp", not "Microsoft Graph". This
-          gate covers built-ins only. A connector tool the agent uses is not
-          configured through this tool at all, so there is nothing to look up
-          and nothing to wait for.
+          gate covers built-ins only. A connector tool has no allow/ask/deny
+          here: its one control is an on/off switch, set through
+          mspbotsagent_set_connector_tools, not this tool.
           execute          Run shell commands / code
           read_file        Read files in the workspace
           write_file       Create or overwrite files
           edit_file        Modify existing files
-          download         Hand a finished file to the user
+          artifact         Hand a finished file to the user
+          show             Show a file without storing it
           task             Delegate to a sub-agent
           start_async_task Start a background agent and carry on
-          No eighth to discover, no catalog to fetch. Identical for every
+          No ninth to discover, no catalog to fetch. Identical for every
           agent, whatever the get returned.
+          `download` and `upload_artifact` are accepted as deprecated aliases
+          of `artifact` (older cached instructions, or a value carried over
+          from a prior get) and are translated, not rejected.
 
         policyError=true -> permission / interrupt_on writes are refused
         (shared assistant policy); owners can still be set.
@@ -229,6 +274,13 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         if permission is None and interrupt_on is None and owners is None:
             return "Error: provide at least one of 'permission', 'interrupt_on', or 'owners'"
+
+        # PRD-21381: normalize legacy bare tool ids (download / upload_artifact,
+        # carried over from a prior get or an old cached instruction) to the
+        # current `artifact` BEFORE validating, so a legacy-keyed caller is
+        # translated rather than rejected.
+        permission = _normalize_legacy_tool_keys(permission)
+        interrupt_on = _normalize_legacy_tool_keys(interrupt_on)
 
         bad_ids = _invalid_bare_tool_ids(permission) + _invalid_bare_tool_ids(interrupt_on)
         if bad_ids:
@@ -258,7 +310,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
 
         try:
             result = await client.put(f"/api/agents/{agent_id}", body)
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -281,7 +333,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             data = await _fetch_agent_data(client, agent_id)
         except AgentError as e:
             return e.to_envelope()
-        return dump_json_capped({"review": data.get("review")})
+        return dump_json({"review": data.get("review")})
 
     @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
     async def mspbotsagent_upsert_agent_evaluation(
@@ -292,7 +344,9 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
                 description=(
                     "List of rule objects; empty list disables self-eval. Each: "
                     '{"rubric": "...", "name": "...", "description": "...", '
-                    '"triggers": ["regex or keyword", ...]}.'
+                    '"triggers": ["regex or keyword", ...]}. `rubric` is REQUIRED '
+                    "on every rule — it is the standard the output is checked "
+                    "against; a rule without it is rejected."
                 )
             ),
         ],
@@ -309,6 +363,17 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
         correct") — never wait for more specifics. Empty rules list turns
         it off. Do not call this twice concurrently for the same agent.
         """
+        missing = _rules_missing_rubric(rules)
+        if missing:
+            return error_envelope(
+                "invalid_argument",
+                f"rules[{', '.join(map(str, missing))}] missing a non-empty `rubric`. "
+                "Every rule needs one — the platform discards the whole evaluation "
+                "otherwise. A short one is fine (e.g. \"checks the math is correct\"); "
+                "add it and call again.",
+                False,
+            )
+
         client = client_factory()
         if client is None:
             return NO_TOKEN
@@ -322,7 +387,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             review["max_iterations"] = max_iterations
         try:
             result = await client.put(f"/api/agents/{agent_id}", {"review": review})
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -345,7 +410,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             data = await _fetch_agent_data(client, agent_id)
         except AgentError as e:
             return e.to_envelope()
-        return dump_json_capped({"approval": data.get("approval")})
+        return dump_json({"approval": data.get("approval")})
 
     @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
     async def mspbotsagent_upsert_agent_approval(
@@ -386,6 +451,6 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             result = await client.put(
                 f"/api/agents/{agent_id}", {"approval": {"rules": rules}}
             )
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()

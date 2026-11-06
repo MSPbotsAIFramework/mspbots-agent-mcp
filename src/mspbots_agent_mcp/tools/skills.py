@@ -1,11 +1,11 @@
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from .._json import dump_json_capped
+from .._json import dump_json, error_envelope
 from ..api_client import AgentClient, AgentError
 from ._common import NO_TOKEN
 
@@ -37,7 +37,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.get(f"/api/agents/{agent_id}/skills")
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -75,7 +75,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
                 f"/api/agents/{agent_id}/skills/create",
                 {"name": name, "files": files},
             )
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -115,7 +115,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             result = await client.put(
                 f"/api/agents/{agent_id}/skills/{capability_id}/files", body
             )
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -136,6 +136,46 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             result = await client.delete_with_body(
                 f"/api/agents/{agent_id}/skills", {"id": capability_id}
             )
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
+
+    @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
+    async def mspbotsagent_set_agent_skill_enabled(
+        agent_id: Annotated[str, Field(description="Agent to change.")],
+        ref: Annotated[
+            str, Field(description="Skill ref, from mspbotsagent_list_agent_skills.")
+        ],
+        enabled: Annotated[
+            bool, Field(description="False turns the skill off for this agent.")
+        ] = True,
+        skill_type: Annotated[
+            Literal["mspbots", "org", "agent"],
+            Field(description="The skill's scope, from the same list entry as ref."),
+        ] = "org",
+    ) -> str:
+        """Turn one skill on or off for this agent, e.g. "disable the renewal-email skill".
+
+        Take ref and skill_type from mspbotsagent_list_agent_skills, where
+        selected=true means on. This only flips the switch: the skill's
+        files are not changed and nothing is deleted. pending=true in the
+        reply means the flag was saved but installing/uninstalling it in
+        the runtime failed, so it is not in effect yet and will be retried.
+        """
+        client = client_factory()
+        if client is None:
+            return NO_TOKEN
+        body = {"ref": ref, "enabled": enabled, "type": skill_type}
+        try:
+            result = await client.put(f"/api/agents/{agent_id}/skills", body)
+        except AgentError as e:
+            return e.to_envelope()
+        # A missing agent or an unresolvable ref comes back as HTTP 200 with
+        # success=false, so it never reaches AgentError above.
+        if isinstance(result, dict) and result.get("success") is False:
+            return error_envelope(
+                "invalid_argument",
+                str(result.get("error") or "Could not set the skill's enabled state"),
+                False,
+            )
+        return dump_json(result)

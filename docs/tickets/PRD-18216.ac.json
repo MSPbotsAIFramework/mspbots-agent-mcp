@@ -3,7 +3,7 @@
     "id": "TC1",
     "ac": "AC1",
     "type": "auto",
-    "text": "Given MCP server 已注册本次改动, When 走 FastMCP 的 list_tools(), Then 存在 mspbotsagent_get_usage_overview，其 annotations 里 readOnlyHint 为 true，且必填参数集合为空",
+    "text": "Given the MCP server has registered this change, When FastMCP list_tools() is called, Then mspbotsagent_get_usage_overview exists, its annotations have readOnlyHint set to true, and its set of required parameters is empty",
     "tests": [
       "tests/test_tools.py::test_tools_list_snapshot"
     ]
@@ -12,7 +12,7 @@
     "id": "TC2",
     "ac": "AC8",
     "type": "auto",
-    "text": "Given 一份含 debug 字段的上游响应, When 交给整形函数, Then 返回值里没有 debug，其余每个顶层字段与上游逐一相等",
+    "text": "Given an upstream response containing a debug field, When it is passed to the shaping function, Then the return value has no debug, and every other top-level field equals the upstream one",
     "tests": [
       "tests/test_usage.py::test_shape_overview_drops_debug_and_keeps_everything_else"
     ]
@@ -21,7 +21,7 @@
     "id": "TC3",
     "ac": "AC7",
     "type": "auto",
-    "text": "Given breakdown 行数多到序列化后超过 _json.MAX_CHARS, When 交给整形函数, Then 返回值带 breakdownReturned（实际行数）与 breakdownTruncatedByToolOutput=true，且 breakdownTotal 仍是上游原值，两者可区分",
+    "text": "Given a breakdown with so many rows that the serialized output exceeds _json.MAX_CHARS, When it is passed to the shaping function, Then the return value carries breakdownReturned (the actual row count) and breakdownTruncatedByToolOutput=true, and breakdownTotal is still the upstream original value, so the two are distinguishable",
     "tests": [
       "tests/test_usage.py::test_oversized_breakdown_is_marked_not_silently_dropped",
       "tests/test_usage.py::test_breakdown_total_still_reports_upstream_value_when_truncated"
@@ -31,7 +31,7 @@
     "id": "TC4",
     "ac": "AC6",
     "type": "auto",
-    "text": "Given 上游返回 spendUnavailable=true 且 spendTruncated=true, When 交给整形函数, Then 这两个布尔值原样出现在返回值里，值未被改写",
+    "text": "Given the upstream returns spendUnavailable=true and spendTruncated=true, When it is passed to the shaping function, Then these two booleans appear as-is in the return value, with values not rewritten",
     "tests": [
       "tests/test_usage.py::test_spend_flags_pass_through_untouched"
     ]
@@ -40,7 +40,7 @@
     "id": "TC5",
     "ac": "AC4",
     "type": "auto",
-    "text": "Given client_factory 返回 None（无凭据）, When 调该工具, Then 返回 not_configured 的 error envelope；Given 上游抛 401 的 AgentError, Then 返回 to_envelope() 映射出的 envelope，而不是包装器自己的通用错误",
+    "text": "Given client_factory returns None (no credentials), When the tool is called, Then it returns a not_configured error envelope; Given the upstream raises an AgentError with 401, Then it returns the envelope mapped by to_envelope(), not the wrapper's own generic error",
     "tests": [
       "tests/test_usage.py::test_missing_credentials_returns_not_configured_envelope",
       "tests/test_tools.py::test_error_envelope_mapping"
@@ -50,50 +50,50 @@
     "id": "TC6",
     "ac": "AC2",
     "type": "manual",
-    "text": "Given 一个有效的平台 token, When 不带任何参数调该工具, Then 返回的 JSON 与直接 curl GET /api/usage/overview 的响应在每个顶层字段上一致（debug 除外）",
+    "text": "Given a valid platform token, When the tool is called without any parameters, Then the returned JSON matches the response of a direct curl GET /api/usage/overview on every top-level field (except debug)",
     "steps": [
-      "取一个测试租户的平台 JWT（从浏览器 devtools 拿，不要落盘）",
+      "Get the platform JWT of a test tenant (take it from browser devtools, do not write it to disk)",
       "curl -s -H \"Authorization: Bearer <JWT>\" https://<origin>/apps/mb-platform-agent/api/usage/overview > /tmp/direct.json",
-      "通过 MCP 客户端（或 test/src/mcp_probe.py 的 check_tool_call）不带参数调 mspbotsagent_get_usage_overview，保存返回值",
-      "逐字段比对两份 JSON：range / startDate / endDate / totalSpend / threads / runs / agents / daily / breakdown / breakdownTotal / page / pageSize / sortBy / sortOrder / timeZone / spendUnavailable / spendTruncated",
-      "确认工具返回值里没有 debug"
+      "Call mspbotsagent_get_usage_overview with no parameters through an MCP client (or check_tool_call in test/src/mcp_probe.py) and save the return value",
+      "Compare the two JSON documents field by field: range / startDate / endDate / totalSpend / threads / runs / agents / daily / breakdown / breakdownTotal / page / pageSize / sortBy / sortOrder / timeZone / spendUnavailable / spendTruncated",
+      "Confirm that the tool return value has no debug"
     ],
-    "expect": "除 debug 外每个顶层字段相等；page=1、pageSize=10、sortBy=cost、sortOrder=desc、range=7d",
+    "expect": "Every top-level field is equal except debug; page=1, pageSize=10, sortBy=cost, sortOrder=desc, range=7d",
     "result": "pass",
-    "evidence": "2026-09-03 live（agent.mspbots.ai，Asia/Shanghai 租户）：工具返回的顶层字段与前端自己那次 /api/usage/overview 响应相比 missing=[] extra=[]，debug 已剥除，range/page/pageSize/sortBy/sortOrder/timeZone 六个稳定字段逐一相等（7d/1/10/cost/desc/Asia/Shanghai）。breakdownTotal=453，工具输出 2820 字符。证据文件 scratchpad/live_evidence.json 的 cases.TC6"
+    "evidence": "2026-09-03 live (agent.mspbots.ai, Asia/Shanghai tenant): compared with the front end's own /api/usage/overview response, the top-level fields returned by the tool have missing=[] extra=[], debug is stripped, and the six stable fields range/page/pageSize/sortBy/sortOrder/timeZone are equal one by one (7d/1/10/cost/desc/Asia/Shanghai). breakdownTotal=453, tool output 2820 characters. Evidence file scratchpad/live_evidence.json, cases.TC6"
   },
   {
     "id": "TC7",
     "ac": "AC3",
     "type": "manual",
-    "text": "Given 同一 token, When 逐个传 range / page / pageSize / sortBy / sortOrder / sopId / source, Then 每个都被转发且结果可观察变化；传非法值时不报错而是回落到服务端默认",
+    "text": "Given the same token, When range / page / pageSize / sortBy / sortOrder / sopId / source are passed one at a time, Then each is forwarded and the result visibly changes; when invalid values are passed there is no error and it falls back to the server default",
     "steps": [
-      "range=30d：确认响应里 range=30d 且 startDate 相应变早",
-      "page=2 且 pageSize=1：确认 breakdown 只有 1 行、且与 page=1 的那行不同",
-      "sortBy=runs + sortOrder=asc：确认 breakdown 的排序随之变化",
-      "sopId=<一个真实 SOP id>：确认 agents/breakdownTotal 收敛到该 agent",
-      "source=task 与 source=chat：确认 runs 变化而 totalSpend 不变",
-      "非法值三连：range=xx、sopId=-1、sortBy=nope —— 逐个确认不报错，且响应里回落成 7d / 无 sopId / cost"
+      "range=30d: confirm the response has range=30d and startDate moves earlier accordingly",
+      "page=2 and pageSize=1: confirm breakdown has only 1 row and it differs from the row on page=1",
+      "sortBy=runs + sortOrder=asc: confirm the ordering of breakdown changes accordingly",
+      "sopId=<a real SOP id>: confirm agents/breakdownTotal narrow down to that agent",
+      "source=task and source=chat: confirm runs changes while totalSpend stays the same",
+      "Three invalid values: range=xx, sopId=-1, sortBy=nope - confirm one by one that there is no error and the response falls back to 7d / no sopId / cost"
     ],
-    "expect": "前五步每步结果可观察变化；第六步三个非法值均返回 200 且字段回落到默认，没有任何 error envelope",
+    "expect": "In the first five steps the result visibly changes at each step; in the sixth step all three invalid values return 200 with fields falling back to defaults, and there is no error envelope",
     "result": "pass",
-    "evidence": "2026-09-03 live：range=30d 改变了 startDate；page=2&pageSize=1 与 page=1 返回不同 sopId；sortBy=runs 的 asc/desc 顺序不同；sopId=<真实 id> 把 breakdownTotal 收窄；source: all=303 task=7 chat=286，且 totalSpend 不变（符合工单「只影响 run 计数」）。非法值：range=xx→7d、sortBy=nope→cost、sopId=-1 均返回 200 且无 error envelope。httpx 日志显示每次请求的 query 只带传入的那一个参数，未传的没有出现——证明 _clean_params 的丢弃语义生效。证据 cases.TC7"
+    "evidence": "2026-09-03 live: range=30d changed startDate; page=2&pageSize=1 returned a different sopId than page=1; sortBy=runs gave different orders for asc/desc; sopId=<real id> narrowed breakdownTotal; source: all=303 task=7 chat=286, with totalSpend unchanged (consistent with the ticket's \"only affects run counts\"). Invalid values: range=xx->7d, sortBy=nope->cost, sopId=-1 all returned 200 with no error envelope. The httpx log shows that the query of each request carried only the one parameter passed and unpassed ones did not appear - proving the drop semantics of _clean_params take effect. Evidence cases.TC7"
   },
   {
     "id": "TC8",
     "ac": "AC5",
     "type": "manual",
-    "text": "Given 目标部署已确认包含 mb-platform-agent 的提交 08745928, When 调该工具, Then breakdown 每行有 createdBy（邮箱或 UUID）与 createdAt（ISO），且 deleted=true 的行这两项为 null",
+    "text": "Given the target deployment is confirmed to contain mb-platform-agent commit 08745928, When the tool is called, Then every row of breakdown has createdBy (email or UUID) and createdAt (ISO), and for rows with deleted=true both are null",
     "steps": [
-      "先确认部署版本包含 08745928：在 mb-platform-agent 上 git branch --contains 08745928，确认它已进目标环境对应的分支（release-aks 或 INT），并记下确认方式",
-      "调该工具，取 breakdown",
-      "检查每一行都有 createdBy 与 createdAt 两个键（值可为 null）",
-      "找一行 createdBy 是邮箱的、和一行是 UUID 的（若都能找到），各记一例",
-      "用 pageSize 调大或翻页找一行 deleted=true，确认它的 createdBy 与 createdAt 都是 null"
+      "First confirm that the deployed version contains 08745928: run git branch --contains 08745928 on mb-platform-agent, confirm it is on the branch corresponding to the target environment (release-aks or INT), and note how it was confirmed",
+      "Call the tool and take breakdown",
+      "Check that every row has both createdBy and createdAt keys (values may be null)",
+      "Find one row whose createdBy is an email and one whose is a UUID (if both can be found), and record one example of each",
+      "Increase pageSize or page through to find a row with deleted=true, and confirm both its createdBy and createdAt are null"
     ],
-    "expect": "每行都含这两个键；deleted=true 的行两项为 null。若部署不含 08745928，则两键整体缺失 —— 这时记 blocked 并写明部署版本，不要判成实现漏做",
+    "expect": "Every row contains these two keys; for rows with deleted=true both are null. If the deployment does not contain 08745928, both keys are missing altogether - in that case record blocked and state the deployed version, and do not judge it as an implementation omission",
     "result": "pass",
-    "evidence": "2026-09-03 live（pageSize=1000，租户 breakdownTotal=453）：返回 99 行，全部含 createdBy 与 createdAt 两个键；其中邮箱 34 行、非邮箱（UUID 回退）10 行、null 55 行；archived（deleted=true）55 行且这两个字段全为 null。前置条件已核：08745928 经 git merge-base --is-ancestor 实测已在 mb-platform-agent 的 origin/release-aks 与 origin/INT 上。证据 cases.TC8",
-    "notes": "这条的前置条件是 OQ-3。部署版本确认不了就记 blocked，别改用例去迁就"
+    "evidence": "2026-09-03 live (pageSize=1000, tenant breakdownTotal=453): 99 rows returned, all containing both createdBy and createdAt keys; of these 34 rows have emails, 10 rows are non-email (UUID fallback), 55 rows are null; 55 archived (deleted=true) rows have both fields null. Precondition verified: 08745928 was measured via git merge-base --is-ancestor to be on mb-platform-agent's origin/release-aks and origin/INT. Evidence cases.TC8",
+    "notes": "The precondition of this case is OQ-3. If the deployed version cannot be confirmed, record blocked; do not change the case to accommodate it"
   }
 ]
