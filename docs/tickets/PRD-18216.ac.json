@@ -1,0 +1,99 @@
+[
+  {
+    "id": "TC1",
+    "ac": "AC1",
+    "type": "auto",
+    "text": "Given the MCP server has registered this change, When FastMCP list_tools() is called, Then mspbotsagent_get_usage_overview exists, its annotations have readOnlyHint set to true, and its set of required parameters is empty",
+    "tests": [
+      "tests/test_tools.py::test_tools_list_snapshot"
+    ]
+  },
+  {
+    "id": "TC2",
+    "ac": "AC8",
+    "type": "auto",
+    "text": "Given an upstream response containing a debug field, When it is passed to the shaping function, Then the return value has no debug, and every other top-level field equals the upstream one",
+    "tests": [
+      "tests/test_usage.py::test_shape_overview_drops_debug_and_keeps_everything_else"
+    ]
+  },
+  {
+    "id": "TC3",
+    "ac": "AC7",
+    "type": "auto",
+    "text": "Given a breakdown with so many rows that the serialized output exceeds _json.MAX_CHARS, When it is passed to the shaping function, Then the return value carries breakdownReturned (the actual row count) and breakdownTruncatedByToolOutput=true, and breakdownTotal is still the upstream original value, so the two are distinguishable",
+    "tests": [
+      "tests/test_usage.py::test_oversized_breakdown_is_marked_not_silently_dropped",
+      "tests/test_usage.py::test_breakdown_total_still_reports_upstream_value_when_truncated"
+    ]
+  },
+  {
+    "id": "TC4",
+    "ac": "AC6",
+    "type": "auto",
+    "text": "Given the upstream returns spendUnavailable=true and spendTruncated=true, When it is passed to the shaping function, Then these two booleans appear as-is in the return value, with values not rewritten",
+    "tests": [
+      "tests/test_usage.py::test_spend_flags_pass_through_untouched"
+    ]
+  },
+  {
+    "id": "TC5",
+    "ac": "AC4",
+    "type": "auto",
+    "text": "Given client_factory returns None (no credentials), When the tool is called, Then it returns a not_configured error envelope; Given the upstream raises an AgentError with 401, Then it returns the envelope mapped by to_envelope(), not the wrapper's own generic error",
+    "tests": [
+      "tests/test_usage.py::test_missing_credentials_returns_not_configured_envelope",
+      "tests/test_tools.py::test_error_envelope_mapping"
+    ]
+  },
+  {
+    "id": "TC6",
+    "ac": "AC2",
+    "type": "manual",
+    "text": "Given a valid platform token, When the tool is called without any parameters, Then the returned JSON matches the response of a direct curl GET /api/usage/overview on every top-level field (except debug)",
+    "steps": [
+      "Get the platform JWT of a test tenant (take it from browser devtools, do not write it to disk)",
+      "curl -s -H \"Authorization: Bearer <JWT>\" https://<origin>/apps/mb-platform-agent/api/usage/overview > /tmp/direct.json",
+      "Call mspbotsagent_get_usage_overview with no parameters through an MCP client (or check_tool_call in test/src/mcp_probe.py) and save the return value",
+      "Compare the two JSON documents field by field: range / startDate / endDate / totalSpend / threads / runs / agents / daily / breakdown / breakdownTotal / page / pageSize / sortBy / sortOrder / timeZone / spendUnavailable / spendTruncated",
+      "Confirm that the tool return value has no debug"
+    ],
+    "expect": "Every top-level field is equal except debug; page=1, pageSize=10, sortBy=cost, sortOrder=desc, range=7d",
+    "result": "pass",
+    "evidence": "2026-09-03 live (agent.mspbots.ai, Asia/Shanghai tenant): compared with the front end's own /api/usage/overview response, the top-level fields returned by the tool have missing=[] extra=[], debug is stripped, and the six stable fields range/page/pageSize/sortBy/sortOrder/timeZone are equal one by one (7d/1/10/cost/desc/Asia/Shanghai). breakdownTotal=453, tool output 2820 characters. Evidence file scratchpad/live_evidence.json, cases.TC6"
+  },
+  {
+    "id": "TC7",
+    "ac": "AC3",
+    "type": "manual",
+    "text": "Given the same token, When range / page / pageSize / sortBy / sortOrder / sopId / source are passed one at a time, Then each is forwarded and the result visibly changes; when invalid values are passed there is no error and it falls back to the server default",
+    "steps": [
+      "range=30d: confirm the response has range=30d and startDate moves earlier accordingly",
+      "page=2 and pageSize=1: confirm breakdown has only 1 row and it differs from the row on page=1",
+      "sortBy=runs + sortOrder=asc: confirm the ordering of breakdown changes accordingly",
+      "sopId=<a real SOP id>: confirm agents/breakdownTotal narrow down to that agent",
+      "source=task and source=chat: confirm runs changes while totalSpend stays the same",
+      "Three invalid values: range=xx, sopId=-1, sortBy=nope - confirm one by one that there is no error and the response falls back to 7d / no sopId / cost"
+    ],
+    "expect": "In the first five steps the result visibly changes at each step; in the sixth step all three invalid values return 200 with fields falling back to defaults, and there is no error envelope",
+    "result": "pass",
+    "evidence": "2026-09-03 live: range=30d changed startDate; page=2&pageSize=1 returned a different sopId than page=1; sortBy=runs gave different orders for asc/desc; sopId=<real id> narrowed breakdownTotal; source: all=303 task=7 chat=286, with totalSpend unchanged (consistent with the ticket's \"only affects run counts\"). Invalid values: range=xx->7d, sortBy=nope->cost, sopId=-1 all returned 200 with no error envelope. The httpx log shows that the query of each request carried only the one parameter passed and unpassed ones did not appear - proving the drop semantics of _clean_params take effect. Evidence cases.TC7"
+  },
+  {
+    "id": "TC8",
+    "ac": "AC5",
+    "type": "manual",
+    "text": "Given the target deployment is confirmed to contain mb-platform-agent commit 08745928, When the tool is called, Then every row of breakdown has createdBy (email or UUID) and createdAt (ISO), and for rows with deleted=true both are null",
+    "steps": [
+      "First confirm that the deployed version contains 08745928: run git branch --contains 08745928 on mb-platform-agent, confirm it is on the branch corresponding to the target environment (release-aks or INT), and note how it was confirmed",
+      "Call the tool and take breakdown",
+      "Check that every row has both createdBy and createdAt keys (values may be null)",
+      "Find one row whose createdBy is an email and one whose is a UUID (if both can be found), and record one example of each",
+      "Increase pageSize or page through to find a row with deleted=true, and confirm both its createdBy and createdAt are null"
+    ],
+    "expect": "Every row contains these two keys; for rows with deleted=true both are null. If the deployment does not contain 08745928, both keys are missing altogether - in that case record blocked and state the deployed version, and do not judge it as an implementation omission",
+    "result": "pass",
+    "evidence": "2026-09-03 live (pageSize=1000, tenant breakdownTotal=453): 99 rows returned, all containing both createdBy and createdAt keys; of these 34 rows have emails, 10 rows are non-email (UUID fallback), 55 rows are null; 55 archived (deleted=true) rows have both fields null. Precondition verified: 08745928 was measured via git merge-base --is-ancestor to be on mb-platform-agent's origin/release-aks and origin/INT. Evidence cases.TC8",
+    "notes": "The precondition of this case is OQ-3. If the deployed version cannot be confirmed, record blocked; do not change the case to accommodate it"
+  }
+]

@@ -17,12 +17,24 @@ from mspbots_agent_mcp.tools.agents import _invalid_bare_tool_ids, _normalize_le
 EXPECTED_TOOLS = {
     # connectors
     "mspbotsagent_get_connectors": (set(), {"readOnlyHint"}),
+    "mspbotsagent_list_connector_tools": (
+        {"agent_id", "capability_id"},
+        {"readOnlyHint"},
+    ),
+    "mspbotsagent_set_connector_tools": (
+        {"agent_id", "capability_id", "tools", "enabled"},
+        {"idempotentHint"},
+    ),
+    # usage (PRD-18216)
+    "mspbotsagent_get_usage_overview": (set(), {"readOnlyHint"}),
     # triggers
     "mspbotsagent_list_triggers": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_upsert_trigger": (set(), set()),
     "mspbotsagent_delete_trigger": ({"task_id"}, {"destructiveHint"}),
     "mspbotsagent_get_trigger_catalog": (set(), {"readOnlyHint"}),
-    "mspbotsagent_run_trigger": ({"task_id"}, set()),
+    # run_trigger — temporarily not registered in triggers.py, so not externally
+    # visible. Restore this entry together with the @mcp.tool decorator.
+    # "mspbotsagent_run_trigger": ({"task_id"}, set()),
     # agent policy: permissions / evaluation / approval
     "mspbotsagent_get_agent_permissions": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_upsert_agent_permissions": ({"agent_id"}, {"idempotentHint"}),
@@ -39,28 +51,38 @@ EXPECTED_TOOLS = {
     "mspbotsagent_set_sop_purpose": ({"agent_id", "value"}, {"idempotentHint"}),
     "mspbotsagent_get_sop_data_sources": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_set_sop_data_sources": ({"agent_id", "value"}, {"idempotentHint"}),
-    "mspbotsagent_get_sop_procedure": ({"agent_id"}, {"readOnlyHint"}),
-    "mspbotsagent_set_sop_procedure": ({"agent_id", "value"}, {"idempotentHint"}),
+    # procedure — temporarily not registered in sop_author.py, so not externally
+    # visible. Restore these entries together with the two @mcp.tool decorators.
+    # "mspbotsagent_get_sop_procedure": ({"agent_id"}, {"readOnlyHint"}),
+    # "mspbotsagent_set_sop_procedure": ({"agent_id", "value"}, {"idempotentHint"}),
     "mspbotsagent_get_sop_section_visibility": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_set_sop_section_visibility": ({"agent_id"}, {"idempotentHint"}),
     "mspbotsagent_clear_sop_section": (
         {"agent_id", "section"},
         {"destructiveHint", "idempotentHint"},
     ),
+    # SOP library (list + synchronous chat)
+    "mspbotsagent_list_sops": (set(), {"readOnlyHint"}),
+    # chat_with_sop — temporarily not registered in sops.py, so not externally
+    # visible. Restore this entry together with the @mcp.tool decorator (and
+    # the skipped tests in tests/test_sops.py).
+    # "mspbotsagent_chat_with_sop": ({"sop_id", "message"}, set()),
     # Twilio tenant config
     "mspbotsagent_get_agent_twilio_tenant_config": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_set_agent_twilio_tenant_config": ({"agent_id"}, {"idempotentHint"}),
-    # skills
-    "mspbotsagent_list_agent_skills": ({"agent_id"}, {"readOnlyHint"}),
-    "mspbotsagent_create_agent_skill": ({"agent_id", "name", "files"}, set()),
-    "mspbotsagent_update_agent_skill_files": (
-        {"agent_id", "capability_id", "files"},
-        {"idempotentHint"},
-    ),
-    "mspbotsagent_delete_agent_skill": (
-        {"agent_id", "capability_id"},
-        {"destructiveHint"},
-    ),
+    # skills — temporarily not registered in server.py, so not externally visible.
+    # Restore these entries together with the skills.register() call.
+    # "mspbotsagent_list_agent_skills": ({"agent_id"}, {"readOnlyHint"}),
+    # "mspbotsagent_create_agent_skill": ({"agent_id", "name", "files"}, set()),
+    # "mspbotsagent_update_agent_skill_files": (
+    #     {"agent_id", "capability_id", "files"},
+    #     {"idempotentHint"},
+    # ),
+    # "mspbotsagent_delete_agent_skill": (
+    #     {"agent_id", "capability_id"},
+    #     {"destructiveHint"},
+    # ),
+    # "mspbotsagent_set_agent_skill_enabled": ({"agent_id", "ref"}, {"idempotentHint"}),
 }
 
 
@@ -106,6 +128,15 @@ async def test_tools_list_snapshot():
     # the permission map, never write it), and the upsert's omit-a-key-and-
     # you-erase-it behavior. These are non-obvious, silent-data-loss traps —
     # trimming them would reintroduce exactly the bug this text documents.
+    # mspbotsagent_get_sop_data_sources joins for the same reason: its rows
+    # carry connection status, and `connection` is a single value with two
+    # separately load-bearing traps — "unavailable" means the gateway status
+    # could not be read, NOT disconnected (reporting it as "not connected" is
+    # a wrong answer about a working connector), and because agent level wins
+    # over org level, `connection` reads only "agent" when both are connected,
+    # so the tenant half is only visible in `tenantConnected`. A model that
+    # gets the field list without those two rules will confidently misreport
+    # whether a data source works. Field semantics per product's spec, 2026-09-08.
     _LONG_DESCRIPTION_EXCEPTIONS = {
         "mspbotsagent_upsert_trigger",
         "mspbotsagent_get_agent_permissions",
@@ -113,6 +144,7 @@ async def test_tools_list_snapshot():
         "mspbotsagent_clear_sop_section",
         "mspbotsagent_set_sop_section_visibility",
         "mspbotsagent_set_agent_twilio_tenant_config",
+        "mspbotsagent_get_sop_data_sources",
     }
     for name, (expected_required, expected_hints) in EXPECTED_TOOLS.items():
         tool = by_name[name]
@@ -227,7 +259,7 @@ def test_legacy_tool_keys_pass_validation_after_normalize(legacy_key):
 
 @pytest.mark.asyncio
 async def test_clear_sop_section_has_real_enum_constraint():
-    # SOP §3 (02-开发阶段SOP.md): enum-shaped params must carry a real JSON
+    # SOP §3 (02-dev-phase-SOP.md): enum-shaped params must carry a real JSON
     # Schema `enum`, not just enum values mentioned in prose. section not
     # only affects tool_use accuracy — it's a destructive action, so a
     # client that skips the enum entirely would only find out it guessed
@@ -349,3 +381,65 @@ async def test_twilio_voice_params_carry_the_real_preset_table():
 
     assert "Polly." in say_voice_desc  # the required-prefix format
     assert "voice" in say_voice_desc  # points back at the pairing requirement
+
+
+@pytest.mark.asyncio
+async def test_upsert_agent_evaluation_rejects_rules_without_rubric_before_calling_api():
+    # PRD-20168: the platform drops the whole `review` when a rule has no
+    # rubric but still answers success, so the read-back was `review: null`.
+    from mspbots_agent_mcp.tools import agents
+
+    captured = {}
+
+    class _StubClient:
+        async def get(self, path):
+            captured["called"] = path
+            return {"data": {}}
+
+        async def put(self, path, json_body):
+            captured["called"] = path
+            return {"success": True}
+
+    mcp = FastMCP(name="test")
+    agents.register(mcp, lambda: _StubClient())
+    result = await mcp.call_tool(
+        "mspbotsagent_upsert_agent_evaluation",
+        {
+            "agent_id": "a1",
+            "rules": [
+                {"rubric": "checks the math", "name": "math"},
+                {"name": "no rubric", "description": "d", "triggers": ["x"]},
+                {"rubric": "   ", "name": "blank"},
+            ],
+        },
+    )
+    text = result[0][0].text
+    assert "invalid_argument" in text
+    assert "rules[1, 2]" in text
+    assert "called" not in captured, "must reject before ever calling the API"
+
+
+@pytest.mark.asyncio
+async def test_upsert_agent_evaluation_sends_rules_with_rubric():
+    from mspbots_agent_mcp.tools import agents
+
+    captured = {}
+
+    class _StubClient:
+        async def get(self, path):
+            return {"data": {}}
+
+        async def put(self, path, json_body):
+            captured["path"] = path
+            captured["body"] = json_body
+            return {"success": True}
+
+    mcp = FastMCP(name="test")
+    agents.register(mcp, lambda: _StubClient())
+    rules = [{"rubric": "checks the math", "name": "math"}]
+    await mcp.call_tool(
+        "mspbotsagent_upsert_agent_evaluation",
+        {"agent_id": "a1", "rules": rules, "max_iterations": 1},
+    )
+    assert captured["path"] == "/api/agents/a1"
+    assert captured["body"] == {"review": {"rules": rules, "max_iterations": 1}}

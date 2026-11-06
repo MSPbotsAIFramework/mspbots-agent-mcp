@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from .._json import dump_json_capped
+from .._json import dump_json
 from ..api_client import AgentClient, AgentError
 from ._common import NO_TOKEN
 
@@ -56,7 +56,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.get(_path(agent_id, _NAME))
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -83,7 +83,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return f"Error: name must be at most {_MAX_NAME_LEN} characters"
         try:
             result = await client.put(_path(agent_id, _NAME), {"value": value})
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -103,7 +103,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.get(_path(agent_id, _SOURCE))
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -125,7 +125,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.put(_path(agent_id, _SOURCE), {"value": value})
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -145,7 +145,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.get(_path(agent_id, _PURPOSE))
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -174,7 +174,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.put(_path(agent_id, _PURPOSE), {"value": value})
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -184,17 +184,52 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
     async def mspbotsagent_get_sop_data_sources(
         agent_id: Annotated[str, Field(description="Agent to read.")],
     ) -> str:
-        """Check which data sources/integrations this agent's SOP relies on.
+        """The connectors/integrations ONE agent is declared to use — the data
+        sources configured in that agent's SOP, with their connection state.
 
-        Use for "what does this agent pull data from" or "which integrations
-        does this SOP depend on".
+        Use for every agent-scoped connector question: "what connectors can
+        this agent use", "which connectors does this agent have available",
+        "what does this agent pull data from", "which integrations does this
+        SOP depend on". For the tenant's whole inventory instead, use
+        mspbotsagent_get_connectors.
+
+        Each entry describes one connector (an MCP server the agent can use):
+        - integration (string): the data source key.
+        - org (bool, optional): present when the source was added at the
+          organization level.
+        - found (bool): false means the referenced connector was removed or
+          disabled — it is unusable; treat it as missing.
+        - name / description / transport / endpoint: connector display info
+          and its MCP endpoint (present when found).
+        - connection (string): current connection state, one of
+          "agent" — connected via THIS agent's own account (agent-level);
+          "org" — connected via the organization/tenant account;
+          "none" — NOT connected (or disabled by the org); unusable, ask the
+          user to connect it first;
+          "unavailable" — status could not be read right now; do NOT treat
+          this as disconnected.
+        - tenantConnected (bool): whether an organization/tenant-level
+          connection exists. When both an agent-level and a tenant-level
+          connection exist, connection reports "agent" — read tenantConnected
+          to see the org one. There is no separate agent-level boolean; use
+          connection == "agent".
+        - enabled (bool): whether the connector is enabled for the
+          organization.
+        - managed (string, optional): "gateway" for gateway-managed
+          connectors.
+        - tools (array): the tools this connector provides ({name, label,
+          description}); empty when not connected or discovery failed.
+
+        A data source is usable when found is true and connection is "agent"
+        or "org". Distinguish "none" (truly not connected) from "unavailable"
+        (status unreadable) — never report "unavailable" as disconnected.
         """
         client = client_factory()
         if client is None:
             return NO_TOKEN
         try:
             result = await client.get(_path(agent_id, _DATA_SOURCES))
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -220,19 +255,27 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
         account tier from our CRM". This is about declaring the SOP's data
         sources, not actually querying that system right now. Do not call
         this twice concurrently for the same agent.
+
+        Read it back with mspbotsagent_get_sop_data_sources.
         """
         client = client_factory()
         if client is None:
             return NO_TOKEN
         try:
             result = await client.put(_path(agent_id, _DATA_SOURCES), {"value": value})
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
     # ----- procedure ------------------------------------------------------
+    # NOTE: the two procedure tools (mspbotsagent_get_sop_procedure /
+    # mspbotsagent_set_sop_procedure) are temporarily hidden from external
+    # clients: their @mcp.tool decorators below are commented out, so they no
+    # longer appear in tools/list and cannot be called. The implementations are
+    # left untouched; re-expose by uncommenting the two decorators (and the
+    # matching entries in tests/test_tools.py).
 
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    # @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def mspbotsagent_get_sop_procedure(
         agent_id: Annotated[str, Field(description="Agent to read.")],
     ) -> str:
@@ -248,11 +291,11 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.get(_path(agent_id, _PROCEDURE))
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
-    @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
+    # @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))  # temporarily not exposed
     async def mspbotsagent_set_sop_procedure(
         agent_id: Annotated[str, Field(description="Agent to update.")],
         value: Annotated[str, Field(description="Procedure markdown.")],
@@ -272,7 +315,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.put(_path(agent_id, _PROCEDURE), {"value": value})
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -301,7 +344,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         try:
             result = await client.get(_path(agent_id, _SECTION_VISIBILITY))
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -349,7 +392,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             body["orgChart"] = org_chart
         try:
             result = await client.put(_path(agent_id, _SECTION_VISIBILITY), body)
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
 
@@ -413,6 +456,6 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
         # just be dead code.
         try:
             result = await client.delete(f"/api/agents/{agent_id}/sop-author/section/{section}")
-            return dump_json_capped(result)
+            return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
