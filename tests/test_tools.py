@@ -11,7 +11,7 @@ from mcp.server.fastmcp import FastMCP
 from mspbots_agent_mcp.api_client import AgentError
 from mspbots_agent_mcp.config import Settings
 from mspbots_agent_mcp.server import create_mcp_server
-from mspbots_agent_mcp.tools.agents import _invalid_bare_tool_ids
+from mspbots_agent_mcp.tools.agents import _invalid_bare_tool_ids, _normalize_legacy_tool_keys
 
 # name -> (required params, expected annotation hint set to True)
 EXPECTED_TOOLS = {
@@ -178,12 +178,51 @@ def test_error_envelope_mapping(status_code, expected_code, expected_retryable):
         ({"send_email": "deny"}, ["send_email"]),
         ({"shell.exec": "deny"}, []),  # dotted — assumed to be a real connector id, unverifiable statically
         ({"execute": "deny", "send_message": "ask"}, ["send_message"]),
+        ({"artifact": "allow"}, []),
+        ({"show": "deny"}, []),
         (None, []),
         ({}, []),
+    ],
+    ids=[
+        "execute-ok",
+        "read-write-ok",
+        "connector-dotted-ok",
+        "unknown-bare-bad",
+        "dotted-assumed-ok",
+        "mixed-one-bad",
+        "artifact-accepted",
+        "show-accepted",
+        "none-ok",
+        "empty-ok",
     ],
 )
 def test_invalid_bare_tool_ids(keys, expected_bad):
     assert sorted(_invalid_bare_tool_ids(keys)) == sorted(expected_bad)
+
+
+def test_normalize_legacy_tool_keys():
+    """PRD-21381: `download` and the already-retired `upload_artifact` both
+    normalize to the current `artifact`; an already-current key wins if both
+    are present; non-dict input passes through unchanged."""
+    assert _normalize_legacy_tool_keys({"download": "ask"}) == {"artifact": "ask"}
+    assert _normalize_legacy_tool_keys({"upload_artifact": "deny"}) == {"artifact": "deny"}
+    assert _normalize_legacy_tool_keys({"download": "ask", "artifact": "deny"}) == {"artifact": "deny"}
+    assert _normalize_legacy_tool_keys(None) is None
+    assert _normalize_legacy_tool_keys("not-a-dict") == "not-a-dict"
+
+
+@pytest.mark.parametrize(
+    "legacy_key",
+    ["download", "upload_artifact"],
+    ids=["download-accepted", "upload_artifact-accepted"],
+)
+def test_legacy_tool_keys_pass_validation_after_normalize(legacy_key):
+    """PRD-21381 AC4: a bare legacy key, run through the same
+    normalize-then-validate sequence mspbotsagent_upsert_agent_permissions
+    uses, is accepted (not rejected) and lands on `artifact`."""
+    normalized = _normalize_legacy_tool_keys({legacy_key: "ask"})
+    assert normalized == {"artifact": "ask"}
+    assert _invalid_bare_tool_ids(normalized) == []
 
 
 @pytest.mark.asyncio
