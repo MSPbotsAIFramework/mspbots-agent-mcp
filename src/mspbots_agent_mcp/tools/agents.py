@@ -26,10 +26,34 @@ _KNOWN_BUILTIN_TOOL_IDS = {
     "read_file",
     "write_file",
     "edit_file",
-    "download",
+    "artifact",
+    "show",
     "task",
     "start_async_task",
 }
+
+# PRD-21381: `download` was the pre-2026-09-09 name for the delivery tool, now
+# `artifact`; `upload_artifact` was a short-lived, already-retired intermediate
+# name (the platform's own catalog split delivery into `artifact`/`show` without
+# ever updating this validator). Mirrors mb-platform-agent's withCurrentToolKeys().
+_LEGACY_BARE_TOOL_ALIASES = {"download": "artifact", "upload_artifact": "artifact"}
+
+
+def _normalize_legacy_tool_keys(keys: Any) -> Any:
+    """Rename legacy bare tool ids (download, upload_artifact) to the current
+    `artifact`, mirroring mb-platform-agent's withCurrentToolKeys(). A key
+    already on the current name wins if both are present.
+    """
+    if not isinstance(keys, dict):
+        return keys
+    out = dict(keys)
+    for legacy, current in _LEGACY_BARE_TOOL_ALIASES.items():
+        if legacy not in out:
+            continue
+        if current not in out:
+            out[current] = out[legacy]
+        del out[legacy]
+    return out
 
 
 def _invalid_bare_tool_ids(keys: Any) -> list[str]:
@@ -218,7 +242,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
                          permission. allowed_decisions: "approve" | "edit" |
                          "reject".
 
-        THE KEYS ARE THESE SEVEN AND NOTHING ELSE
+        THE KEYS ARE THESE EIGHT AND NOTHING ELSE
           Connector (MCP) tool ids are NOT valid keys here and are rejected —
           not "qbo.createInvoice", not "ClickUp", not "Microsoft Graph". This
           gate covers built-ins only. A connector tool has no allow/ask/deny
@@ -228,11 +252,15 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
           read_file        Read files in the workspace
           write_file       Create or overwrite files
           edit_file        Modify existing files
-          download         Hand a finished file to the user
+          artifact         Hand a finished file to the user
+          show             Show a file without storing it
           task             Delegate to a sub-agent
           start_async_task Start a background agent and carry on
-          No eighth to discover, no catalog to fetch. Identical for every
+          No ninth to discover, no catalog to fetch. Identical for every
           agent, whatever the get returned.
+          `download` and `upload_artifact` are accepted as deprecated aliases
+          of `artifact` (older cached instructions, or a value carried over
+          from a prior get) and are translated, not rejected.
 
         policyError=true -> permission / interrupt_on writes are refused
         (shared assistant policy); owners can still be set.
@@ -246,6 +274,13 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return NO_TOKEN
         if permission is None and interrupt_on is None and owners is None:
             return "Error: provide at least one of 'permission', 'interrupt_on', or 'owners'"
+
+        # PRD-21381: normalize legacy bare tool ids (download / upload_artifact,
+        # carried over from a prior get or an old cached instruction) to the
+        # current `artifact` BEFORE validating, so a legacy-keyed caller is
+        # translated rather than rejected.
+        permission = _normalize_legacy_tool_keys(permission)
+        interrupt_on = _normalize_legacy_tool_keys(interrupt_on)
 
         bad_ids = _invalid_bare_tool_ids(permission) + _invalid_bare_tool_ids(interrupt_on)
         if bad_ids:
