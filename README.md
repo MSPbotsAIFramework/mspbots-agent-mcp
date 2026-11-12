@@ -217,6 +217,32 @@ Rule object shapes:
 > `PUT /api/agents/:id` (shared by all three upserts, partial: writing
 > `permission`/`interruptOn`, `review`, and `approval` respectively).
 
+### Agents (list / read / upload)
+
+Manage the tenant's own agent inventory — separate from the policy block above,
+which only ever reads/writes an *existing* agent by id. `mspbotsagent_upload_agent`
+always creates an **inactive draft**: the agent never runs and no parameter here
+can switch it on, now or after any future edit — only a person in the platform
+UI can do that. It is also **not idempotent**: a retried call creates a second
+agent row.
+
+| Tool | What it does | Parameters |
+|---|---|---|
+| `mspbotsagent_list_agents` | List the caller's own tenant's agents: `id` / `name` / `status` / `active` / `owners` (read-only) | `search` (name/description/model substring), `page` (default 1), `page_size` (default 20, max 100) |
+| `mspbotsagent_get_agent` | Read one agent's full definition: name, description, model, prompt, `permission`, `interruptOn`, `review`, `approval`, `steps`/`toolCallLimit`/`recursionLimit`, status, `active`, `owners` (read-only) | `agent_id` (required) |
+| `mspbotsagent_upload_agent` | Upload a locally built agent definition as a new, inactive draft | `name` (required), `model` (required), `prompt`, `description`, `permission`, `interrupt_on`, `review` (`{rules, max_iterations}`), `approval` (`{rules}`), `steps`, `tool_call_limit`, `recursion_limit` |
+
+`permission`/`interrupt_on` accept the same shapes as the agent-policy tools above;
+omitting both lands the new agent on the platform's restricted default permission,
+not full autonomy. There is no `owners`, `msteams`, `twilio`, `baseUrl` or `apiKey`
+parameter — channel config and the BYO-LLM-gateway fields stay out of this tool's
+typed signature by construction, not by a runtime check.
+
+> Backing endpoints: `GET /api/agents` (`list_agents`), `GET /api/agents/:id`
+> (`get_agent`, shared with the policy getters above), `POST /api/agents`
+> (`upload_agent`) — all three require the platform's `{ apiKey: true }`
+> route opt-in (PRD-22084).
+
 ### Agent SOP author
 
 An agent's SOP (standard operating procedure) draft has 5 independent fields, each with

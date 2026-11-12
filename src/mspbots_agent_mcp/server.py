@@ -116,6 +116,8 @@ def create_mcp_server(settings: Settings) -> FastMCP:
             "agent's SOP draft (name/source/purpose/data sources/visibility); "
             "mspbotsagent_clear_sop_section destructively deletes a module's data; "
             "mspbotsagent_list_sops browses the tenant's SOP library; "
+            "mspbotsagent_list_agents/get_agent/upload_agent list/read/upload agents — upload "
+            "creates an off draft only; "
             "mspbotsagent_*_agent_twilio_tenant_config manage the tenant-editable slice of an "
             "agent's Twilio phone channel (greeting, language, transfer/idle, tts), not system "
             "settings (credentials, prompts). Typical flow: check connectors, then policy or SOP, "

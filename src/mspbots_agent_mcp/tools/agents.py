@@ -38,6 +38,57 @@ _KNOWN_BUILTIN_TOOL_IDS = {
 # ever updating this validator). Mirrors mb-platform-agent's withCurrentToolKeys().
 _LEGACY_BARE_TOOL_ALIASES = {"download": "artifact", "upload_artifact": "artifact"}
 
+# PRD-22084: GET /api/agents' client clamp, same ceiling mspbotsagent_list_sops already uses —
+# keeps a model from being handed thousands of rows in one call.
+_MAX_PAGE_SIZE = 100
+
+# PRD-22084: list_agents' row projection. `running`/`canEdit`/`canChat`/`canConfigure` are
+# UI-only and meaningless for an api-key caller that already passes every owner check
+# (shared/agent-access.ts's ownersAllow: me.isApiKey always returns true) — dropped, not leaked.
+_AGENT_LIST_FIELDS = ("id", "name", "status", "active", "owners")
+
+# PRD-22084: get_agent / upload_agent's response projection — the fields AC2 asks for. Channel
+# config (msteams/twilio), the BYO-gateway fields (baseUrl/hasApiKey), and UI-only bookkeeping
+# (canEdit/canChat/canConfigure/autonomyAudit/updatedByLabel/onDisk/askMemory/webhook urls) are
+# deliberately excluded: out of scope for "SOP / skills / settings", and partly sensitive.
+_AGENT_DETAIL_FIELDS = (
+    "id",
+    "name",
+    "description",
+    "model",
+    "prompt",
+    "status",
+    "active",
+    "permission",
+    "interruptOn",
+    "review",
+    "approval",
+    "steps",
+    "toolCallLimit",
+    "recursionLimit",
+    "owners",
+    "policyError",
+)
+
+# PRD-22084: upload_agent's response is the raw POST /api/agents result, which — unlike
+# GET /api/agents/:id — never merges in the assistant-policy fields (permission/interruptOn/
+# review/approval/owners/policyError come from a separate getAssistantPolicy() call getAgent
+# makes and createAgent does not; mb-platform-agent/service/agent/route.ts:586-591). Only project
+# what createAgent's response actually carries; a caller that wants permission/review read back
+# calls mspbotsagent_get_agent with the returned id (AC6, TC-AGTMCP-011).
+_AGENT_UPLOAD_RESPONSE_FIELDS = (
+    "id",
+    "name",
+    "description",
+    "model",
+    "prompt",
+    "status",
+    "active",
+    "steps",
+    "toolCallLimit",
+    "recursionLimit",
+)
+
 
 def _normalize_legacy_tool_keys(keys: Any) -> Any:
     """Rename legacy bare tool ids (download, upload_artifact) to the current
@@ -454,3 +505,206 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
+
+    # ----- agent inventory: list / read / upload (PRD-22084) ------------
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    async def mspbotsagent_list_agents(
+        search: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Case-insensitive substring match against an agent's name, "
+                    "description or model. Leave empty to list everything."
+                )
+            ),
+        ] = None,
+        page: Annotated[int, Field(ge=1, description="1-based page number.")] = 1,
+        page_size: Annotated[int, Field(ge=1, description="Rows per page (max 100).")] = 20,
+    ) -> str:
+        """List the caller's own tenant's agents: id, name, status, active, owners.
+
+        Scoped to the caller's own tenant — another tenant's agents never
+        appear here, under any page or search value. Use to find an agent by
+        name before mspbotsagent_get_agent, or to confirm
+        mspbotsagent_upload_agent's new agent shows up.
+        """
+        client = client_factory()
+        if client is None:
+            return NO_TOKEN
+        try:
+            result = await client.get(
+                "/api/agents",
+                params={
+                    "search": search,
+                    "page": page,
+                    "pageSize": min(page_size, _MAX_PAGE_SIZE),
+                },
+            )
+        except AgentError as e:
+            return e.to_envelope()
+        data = (result or {}).get("data", {}) or {}
+        rows = data.get("list") if isinstance(data.get("list"), list) else []
+        projected = {
+            "list": [
+                {field: row.get(field) for field in _AGENT_LIST_FIELDS}
+                for row in rows
+                if isinstance(row, dict)
+            ],
+            "total": data.get("total"),
+            "page": data.get("page"),
+            "pageSize": data.get("pageSize"),
+        }
+        return dump_json(projected)
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    async def mspbotsagent_get_agent(
+        agent_id: Annotated[str, Field(description="Agent to read.")],
+    ) -> str:
+        """Read one agent's full definition as the platform stores it: name,
+        description, model, prompt, permission, interrupt_on (as
+        `interruptOn`), review, approval, steps/tool-call/recursion limits,
+        status, active, owners.
+
+        An id that belongs to another tenant, or does not exist at all,
+        returns a structured not-found error — never another tenant's data.
+        """
+        client = client_factory()
+        if client is None:
+            return NO_TOKEN
+        try:
+            data = await _fetch_agent_data(client, agent_id)
+        except AgentError as e:
+            return e.to_envelope()
+        return dump_json({field: data.get(field) for field in _AGENT_DETAIL_FIELDS})
+
+    # upload_agent is neither read-only, nor idempotent (see docstring), nor destructive — no
+    # hint fits, the same category mspbotsagent_upsert_trigger's create-shaped half is already in.
+    @mcp.tool()
+    async def mspbotsagent_upload_agent(
+        name: Annotated[str, Field(description="Agent name — required, must be unique in the tenant.")],
+        model: Annotated[str, Field(description='Model id, e.g. "azure/gpt-5.4" — required.')],
+        prompt: Annotated[str | None, Field(description="System prompt / instructions.")] = None,
+        description: Annotated[str | None, Field(description="Short description.")] = None,
+        permission: Annotated[
+            dict | None,
+            Field(
+                description=(
+                    'Map of tool -> "allow" | "ask" | "deny", same keys and rules as '
+                    "mspbotsagent_upsert_agent_permissions' `permission` parameter. Omit to "
+                    "get the platform's restricted default, not full autonomy."
+                )
+            ),
+        ] = None,
+        interrupt_on: Annotated[
+            dict | None,
+            Field(
+                description=(
+                    "Same shape as mspbotsagent_upsert_agent_permissions' `interrupt_on`: "
+                    'map of tool -> true, or {"allowed_decisions": [...], "description": "..."}.'
+                )
+            ),
+        ] = None,
+        review: Annotated[
+            dict | None,
+            Field(
+                description=(
+                    'Self-review config: {"rules": [{"rubric": "...", "name": "...", '
+                    '"description": "...", "triggers": [...]}], "max_iterations": int}. '
+                    "Every rule needs a non-empty `rubric`; omit to leave self-review off."
+                )
+            ),
+        ] = None,
+        approval: Annotated[
+            dict | None,
+            Field(
+                description=(
+                    'Human-approval gates: {"rules": [{"name": "...", "intent": "...", '
+                    '"triggers": [...], "tools": [...], "decisions": ["approve", "reject"]}]}. '
+                    "Omit for no approval gates."
+                )
+            ),
+        ] = None,
+        steps: Annotated[int | None, Field(description="Max reasoning steps per run.")] = None,
+        tool_call_limit: Annotated[int | None, Field(description="Max tool calls per run.")] = None,
+        recursion_limit: Annotated[int | None, Field(description="Max recursion depth per run.")] = None,
+    ) -> str:
+        """Upload a locally built agent definition as a new, inactive draft in
+        the caller's own tenant — at minimum a name and a model.
+
+        NOT IDEMPOTENT: every successful call creates a new agent row.
+        Retrying a timed-out call can create a duplicate draft (itself
+        inactive, visible and deletable, not a running side effect, but still
+        a duplicate — do not retry blindly).
+
+        The created agent is switched off — it does not run and fires no
+        trigger — until a person turns it on in the platform's Agents UI. No
+        parameter here, now or after any future edit, can switch it on: this
+        tool has no `owners`, `msteams`, `twilio`, `baseUrl` or `apiKey`
+        parameter, by design, not by omission. It subsequently appears in
+        mspbotsagent_list_agents and the platform's own Agents list.
+        """
+        if not name or not name.strip():
+            return error_envelope("invalid_argument", "name is required", False)
+        if not model or not model.strip():
+            return error_envelope("invalid_argument", "model is required", False)
+
+        client = client_factory()
+        if client is None:
+            return NO_TOKEN
+
+        permission = _normalize_legacy_tool_keys(permission)
+        interrupt_on = _normalize_legacy_tool_keys(interrupt_on)
+        bad_ids = _invalid_bare_tool_ids(permission) + _invalid_bare_tool_ids(interrupt_on)
+        if bad_ids:
+            return error_envelope(
+                "invalid_argument",
+                f"Not a recognized built-in tool id: {', '.join(sorted(set(bad_ids)))}. "
+                f"Built-ins are: {', '.join(sorted(_KNOWN_BUILTIN_TOOL_IDS))}. A connector "
+                "tool id must be in \"vendor.action\" form (e.g. \"qbo.createInvoice\") — "
+                "call mspbotsagent_get_connectors first to find the real key.",
+                False,
+            )
+        if review is not None:
+            missing = _rules_missing_rubric(review.get("rules") if isinstance(review, dict) else None)
+            if missing:
+                return error_envelope(
+                    "invalid_argument",
+                    f"review.rules[{', '.join(map(str, missing))}] missing a non-empty "
+                    "`rubric`. Every rule needs one — the platform discards the whole "
+                    "evaluation otherwise.",
+                    False,
+                )
+
+        body: dict = {"name": name.strip(), "model": model.strip()}
+        if prompt is not None:
+            body["prompt"] = prompt
+        if description is not None:
+            body["description"] = description
+        if permission is not None:
+            body["permission"] = permission
+        if interrupt_on is not None:
+            body["interruptOn"] = interrupt_on
+        if review is not None:
+            body["review"] = review
+        if approval is not None:
+            body["approval"] = approval
+        if steps is not None:
+            body["steps"] = steps
+        if tool_call_limit is not None:
+            body["toolCallLimit"] = tool_call_limit
+        if recursion_limit is not None:
+            body["recursionLimit"] = recursion_limit
+
+        try:
+            result = await client.post("/api/agents", body)
+        except AgentError as e:
+            return e.to_envelope()
+        # createAgent answers invalid input / a duplicate name with HTTP 200 and
+        # {"success": false, "error": "..."} (service/common/envelope.ts's fail()), not a 4xx —
+        # AgentError never fires for that case, so it has to be checked here (AC5).
+        if not isinstance(result, dict) or not result.get("success"):
+            message = (result or {}).get("error") if isinstance(result, dict) else None
+            return error_envelope("invalid_argument", message or "Agent was not created", False)
+        data = result.get("data") or {}
+        return dump_json({field: data.get(field) for field in _AGENT_UPLOAD_RESPONSE_FIELDS})
