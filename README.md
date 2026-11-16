@@ -202,11 +202,12 @@ key is `agentId` throughout.
 | Tool | What it does | Parameters |
 |---|---|---|
 | `mspbotsagent_get_agent_permissions` | Read the permission config: `permission` / `interruptOn` / `owners` / `tools` (read-only) / `policyError` | `agent_id` (required) |
-| `mspbotsagent_upsert_agent_permissions` | Update tool permissions, interrupt settings and ownership (partial; the three keys are independent, so sending owners alone is valid) | `agent_id` (required), `permission` (tool→`allow`/`ask`/`deny`), `interrupt_on` (tool→`true` or `{allowed_decisions, description}`), `owners` (`[{userId, name, email}]`) — at least one of the three |
+| `mspbotsagent_upsert_agent_permissions` | Update tool permissions, interrupt settings and ownership (partial; the three keys are independent, so sending owners alone is valid); returns `{success, id, updatedAt}` | `agent_id` (required), `permission` (tool→`allow`/`ask`/`deny`), `interrupt_on` (tool→`true` or `{allowed_decisions, description}`), `owners` (`[{userId, name, email}]`) — at least one of the three |
 | `mspbotsagent_get_agent_evaluation` | Read the self-evaluation config `review = {rules, max_iterations}` | `agent_id` (required) |
-| `mspbotsagent_upsert_agent_evaluation` | Set/update the self-evaluation rules (an empty `rules` array turns self-evaluation off) | `agent_id` (required), `rules` (rule array), `max_iterations` |
+| `mspbotsagent_upsert_agent_evaluation` | Set/update the self-evaluation rules (an empty `rules` array turns self-evaluation off); returns `{success, id, updatedAt}` | `agent_id` (required), `rules` (rule array), `max_iterations` |
 | `mspbotsagent_get_agent_approval` | Read the human approval rules `approval` (array) | `agent_id` (required) |
-| `mspbotsagent_upsert_agent_approval` | Set/update the human approval rules (an empty array removes every approval gate) | `agent_id` (required), `rules` (approval rule array) |
+| `mspbotsagent_upsert_agent_approval` | Set/update the human approval rules (an empty array removes every approval gate); returns `{success, id, updatedAt}` | `agent_id` (required), `rules` (approval rule array) |
+| `mspbotsagent_update_agent` | **Write tool; edits the live agent immediately** (no draft/publish; effective from the agent's next run, recorded in its version history as made through the MCP connector). Changes instructions, name, description, a fixed list of settings and skills on/off; cannot switch the agent on/off | `agent_id` (required), `name`, `description`, `instructions`, `settings` (`model`, `toolCallLimit`, `recursionLimit`, `maxRunTimeSeconds`, `creditBudgetPerRun`, `circuitBreakerMaxRuns`, `circuitBreakerWindowMinutes`, `allowReply`, `askMemory`), `skills` (`[{ref, enabled, type}]`), `version_note` — at least one change |
 
 Rule object shapes:
 
