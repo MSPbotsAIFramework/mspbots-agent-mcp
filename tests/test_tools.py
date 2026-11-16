@@ -47,6 +47,10 @@ EXPECTED_TOOLS = {
     "mspbotsagent_update_agent": ({"agent_id"}, {"destructiveHint", "idempotentHint"}),
     "mspbotsagent_get_agent_approval": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_upsert_agent_approval": ({"agent_id", "rules"}, {"idempotentHint"}),
+    # agent inventory: list / read / upload (PRD-22084)
+    "mspbotsagent_list_agents": (set(), {"readOnlyHint"}),
+    "mspbotsagent_get_agent": ({"agent_id"}, {"readOnlyHint"}),
+    "mspbotsagent_upload_agent": ({"name", "model"}, set()),
     # SOP author
     "mspbotsagent_get_sop_name": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_set_sop_name": ({"agent_id", "value"}, {"idempotentHint"}),
