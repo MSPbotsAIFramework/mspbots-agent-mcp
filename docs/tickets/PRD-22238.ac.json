@@ -6,8 +6,10 @@
     "type": "auto",
     "text": "Given a stub platform answering {success:true,data:{id:'a1',prompt:'<long>',updatedAt:'T'}}, When upsert_agent_approval is called with valid rules, Then the result is exactly {success:true,id:'a1',updatedAt:'T'} and the prompt text is absent",
     "tests": [
-      "tests/test_save_ack.py::test_approval_returns_ack_only"
-    ]
+      "tests/test_save_ack.py"
+    ],
+    "result": "pass",
+    "evidence": "tests/test_save_ack.py::test_returns_ack_only[approval] passed (uv run pytest, 2026-11-16)"
   },
   {
     "id": "TC2",
@@ -16,8 +18,10 @@
     "type": "auto",
     "text": "Given the same stub, When upsert_agent_permissions is called with a valid permission map, Then the result is exactly {success:true,id:'a1',updatedAt:'T'} with no permissionEffective and no prompt",
     "tests": [
-      "tests/test_save_ack.py::test_permissions_returns_ack_only"
-    ]
+      "tests/test_save_ack.py"
+    ],
+    "result": "pass",
+    "evidence": "tests/test_save_ack.py::test_returns_ack_only[permissions] passed (uv run pytest, 2026-11-16)"
   },
   {
     "id": "TC3",
@@ -26,8 +30,10 @@
     "type": "auto",
     "text": "Given the same stub, When upsert_agent_evaluation is called with a rule that has a rubric, Then the result is exactly {success:true,id:'a1',updatedAt:'T'}",
     "tests": [
-      "tests/test_save_ack.py::test_evaluation_returns_ack_only"
-    ]
+      "tests/test_save_ack.py"
+    ],
+    "result": "pass",
+    "evidence": "tests/test_save_ack.py::test_returns_ack_only[evaluation] passed (uv run pytest, 2026-11-16)"
   },
   {
     "id": "TC4",
@@ -36,8 +42,10 @@
     "type": "auto",
     "text": "Given a stub that records the PUT body, When each of the three tools saves, Then the body sent is unchanged from before (only the response is trimmed)",
     "tests": [
-      "tests/test_save_ack.py::test_put_bodies_unchanged"
-    ]
+      "tests/test_save_ack.py"
+    ],
+    "result": "pass",
+    "evidence": "test_put_bodies_unchanged passed (uv run pytest, 2026-11-16)"
   },
   {
     "id": "TC5",
@@ -46,8 +54,10 @@
     "type": "auto",
     "text": "Given the stub raises AgentError(400,'boom') or answers {success:false,error:'Agent not found'} or rules lack a rubric, When each tool is called, Then the error text equals the one returned before this change (success:false bodies pass through unchanged)",
     "tests": [
-      "tests/test_save_ack.py::test_errors_unchanged"
-    ]
+      "tests/test_save_ack.py"
+    ],
+    "result": "pass",
+    "evidence": "test_errors_unchanged x3 + test_rubric_error_unchanged passed (uv run pytest, 2026-11-16)"
   },
   {
     "id": "TC6",
@@ -56,8 +66,10 @@
     "type": "auto",
     "text": "Given a stub answer with a 20 KB prompt, When each of the three tools succeeds, Then the response is under 1024 bytes",
     "tests": [
-      "tests/test_save_ack.py::test_ack_under_1kb"
-    ]
+      "tests/test_save_ack.py"
+    ],
+    "result": "pass",
+    "evidence": "test_ack_under_1kb x3 passed (uv run pytest, 2026-11-16)"
   },
   {
     "id": "TC7",
@@ -67,7 +79,9 @@
     "text": "On INT with a test agent in the test tenant: call each save tool then the matching get tool; the get returns the values just saved",
     "precond": "A test agent exists in the test tenant on INT",
     "steps": "1) Call mspbotsagent_upsert_agent_approval with one rule. 2) Call mspbotsagent_get_agent_approval. 3) Repeat with upsert_agent_permissions/get_agent_permissions and upsert_agent_evaluation/get_agent_evaluation.",
-    "expect": "Each get returns the values just saved."
+    "expect": "Each get returns the values just saved.",
+    "result": "untested",
+    "evidence": "Manual INT case: needs a test agent on INT; not run in dev self-test (no live write to a real agent); to be verified after INT publish"
   },
   {
     "id": "TC8",
@@ -77,7 +91,9 @@
     "text": "On INT with the same test agent: each of the three save calls returns only success, id and updatedAt, and the raw response is under 1 KB",
     "precond": "Same test agent on INT",
     "steps": "1) Call each of the three save tools with a valid payload. 2) Record each raw response and its byte length.",
-    "expect": "Each response contains only success, id and updatedAt and is under 1 KB."
+    "expect": "Each response contains only success, id and updatedAt and is under 1 KB.",
+    "result": "untested",
+    "evidence": "Manual INT case: needs a test agent on INT; not run in dev self-test (no live write to a real agent); to be verified after INT publish"
   },
   {
     "id": "TC9",
@@ -87,6 +103,8 @@
     "text": "On INT: call upsert_agent_evaluation with a rule without rubric and upsert_agent_permissions with an unknown bare tool id; both return their previous error text",
     "precond": "Same test agent on INT",
     "steps": "1) Call upsert_agent_evaluation with a rule that has no rubric. 2) Call upsert_agent_permissions with permission {\"send_email\":\"allow\"}.",
-    "expect": "Both return the same invalid_argument error text as before this change."
+    "expect": "Both return the same invalid_argument error text as before this change.",
+    "result": "untested",
+    "evidence": "Manual INT case: needs a test agent on INT; not run in dev self-test (no live write to a real agent); to be verified after INT publish"
   }
 ]

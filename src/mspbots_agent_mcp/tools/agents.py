@@ -19,6 +19,9 @@ from ._common import NO_TOKEN
 # allowed to do, when it must pause, when a human must approve). That's
 # distinct from the SOP-author tools (sop_author.py), which manage a
 # documentation/planning artifact rather than enforced runtime policy.
+#
+# PRD-22238: the platform's PUT answers with the whole agent (incl. the system
+# prompt). The three save tools return an acknowledgement only; see _save_ack.
 
 
 _KNOWN_BUILTIN_TOOL_IDS = {
@@ -108,6 +111,22 @@ async def _guard_policy(client: AgentClient, agent_id: str) -> str | None:
             False,
         )
     return None
+
+
+def _save_ack(result: Any, agent_id: str) -> Any:
+    """PRD-22238: shrink a successful PUT answer to {success, id, updatedAt}.
+
+    Anything else (success:false bodies, unexpected shapes) passes through
+    unchanged so refusals keep their text.
+    """
+    data = result.get("data") if isinstance(result, dict) else None
+    if not isinstance(data, dict) or result.get("success") is not True:
+        return result
+    return {
+        "success": True,
+        "id": data.get("id") or agent_id,
+        "updatedAt": data.get("updatedAt"),
+    }
 
 
 # PRD-22150: the agent settings update_agent may change in one call. Everything
@@ -320,7 +339,8 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
         policyError=true -> permission / interrupt_on writes are refused
         (shared assistant policy); owners can still be set.
         Never update one agent from two calls at once — the second replace
-        wipes the first. Returns the updated agent record as JSON.
+        wipes the first. Returns {success, id, updatedAt} only; call
+        mspbotsagent_get_agent_permissions to see the saved values.
         Legacy: agentos unions {tool: false} in a `tools` map into "deny";
         never write that form.
         """
@@ -365,7 +385,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
 
         try:
             result = await client.put(f"/api/agents/{agent_id}", body)
-            return dump_json(result)
+            return dump_json(_save_ack(result, agent_id))
         except AgentError as e:
             return e.to_envelope()
 
@@ -417,6 +437,8 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
         phrased. A vague `rubric` is enough (e.g. "checks the math is
         correct") — never wait for more specifics. Empty rules list turns
         it off. Do not call this twice concurrently for the same agent.
+        Returns {success, id, updatedAt} only; call
+        mspbotsagent_get_agent_evaluation to see the saved rules.
         """
         missing = _rules_missing_rubric(rules)
         if missing:
@@ -442,7 +464,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             review["max_iterations"] = max_iterations
         try:
             result = await client.put(f"/api/agents/{agent_id}", {"review": review})
-            return dump_json(result)
+            return dump_json(_save_ack(result, agent_id))
         except AgentError as e:
             return e.to_envelope()
 
@@ -493,6 +515,8 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
 
         Shares one PUT with the permissions/evaluation tools — never run
         two of the three concurrently on the same agent.
+        Returns {success, id, updatedAt} only; call
+        mspbotsagent_get_agent_approval to see the saved rules.
         """
         client = client_factory()
         if client is None:
@@ -506,7 +530,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             result = await client.put(
                 f"/api/agents/{agent_id}", {"approval": {"rules": rules}}
             )
-            return dump_json(result)
+            return dump_json(_save_ack(result, agent_id))
         except AgentError as e:
             return e.to_envelope()
 
