@@ -207,6 +207,7 @@ key is `agentId` throughout.
 | `mspbotsagent_upsert_agent_evaluation` | Set/update the self-evaluation rules (an empty `rules` array turns self-evaluation off) | `agent_id` (required), `rules` (rule array), `max_iterations` |
 | `mspbotsagent_get_agent_approval` | Read the human approval rules `approval` (array) | `agent_id` (required) |
 | `mspbotsagent_upsert_agent_approval` | Set/update the human approval rules (an empty array removes every approval gate) | `agent_id` (required), `rules` (approval rule array) |
+| `mspbotsagent_update_agent` | **Write tool; edits the live agent immediately** (no draft/publish; effective from the agent's next run, recorded in its version history as made through the MCP connector). Changes instructions, name, description, a fixed list of settings and skills on/off; cannot switch the agent on/off | `agent_id` (required), `name`, `description`, `instructions`, `settings` (`model`, `toolCallLimit`, `recursionLimit`, `maxRunTimeSeconds`, `creditBudgetPerRun`, `circuitBreakerMaxRuns`, `circuitBreakerWindowMinutes`, `allowReply`, `askMemory`), `skills` (`[{ref, enabled, type}]`), `version_note` — at least one change |
 
 Rule object shapes:
 

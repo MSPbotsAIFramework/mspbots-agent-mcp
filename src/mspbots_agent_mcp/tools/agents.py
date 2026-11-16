@@ -110,6 +110,61 @@ async def _guard_policy(client: AgentClient, agent_id: str) -> str | None:
     return None
 
 
+# PRD-22150: the agent settings update_agent may change in one call. Everything
+# else the shared PUT accepts has a tool of its own (permissions, evaluation,
+# approval, triggers, Twilio config) or is deliberately out of reach from here
+# (`active` -- the on/off switch stays in the platform UI -- credentials, owners).
+_UPDATE_AGENT_SETTINGS = {
+    "model",
+    "toolCallLimit",
+    "recursionLimit",
+    "maxRunTimeSeconds",
+    "creditBudgetPerRun",
+    "circuitBreakerMaxRuns",
+    "circuitBreakerWindowMinutes",
+    "allowReply",
+    "askMemory",
+}
+_SKILL_TYPES = {"mspbots", "org", "agent"}
+_SETTING_OWNERS = {
+    "permission": "mspbotsagent_upsert_agent_permissions",
+    "interruptOn": "mspbotsagent_upsert_agent_permissions",
+    "owners": "mspbotsagent_upsert_agent_permissions",
+    "review": "mspbotsagent_upsert_agent_evaluation",
+    "approval": "mspbotsagent_upsert_agent_approval",
+    "twilio": "mspbotsagent_set_agent_twilio_tenant_config",
+}
+
+
+def _update_agent_problem(settings: Any, skills: Any) -> str | None:
+    """Why `settings` / `skills` cannot be sent, or None. Checked before any write
+    so a rejected call changes nothing."""
+    if settings is not None:
+        bad = sorted(k for k in settings if k not in _UPDATE_AGENT_SETTINGS)
+        if bad:
+            hints = [f"{k} -> {_SETTING_OWNERS[k]}" for k in bad if k in _SETTING_OWNERS]
+            if any(k in ("active", "enabled") for k in bad):
+                hints.append("on/off (active) -> only in the MSPbots platform")
+            return (
+                f"settings cannot change: {', '.join(bad)}. Allowed: "
+                f"{', '.join(sorted(_UPDATE_AGENT_SETTINGS))}."
+                + (f" Use instead: {'; '.join(hints)}." if hints else "")
+            )
+    for entry in skills or []:
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("ref"), str)
+            or not entry["ref"]
+            or not isinstance(entry.get("enabled"), bool)
+            or entry.get("type", "org") not in _SKILL_TYPES
+        ):
+            return (
+                'each skills entry must be {"ref": str, "enabled": bool, '
+                '"type": "mspbots" | "org" | "agent" (default "org")}'
+            )
+    return None
+
+
 def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> None:
 
     # ----- permissions -----------------------------------------------------
@@ -454,3 +509,117 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             return dump_json(result)
         except AgentError as e:
             return e.to_envelope()
+
+    # ----- update agent --------------------------------------------------
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False, destructiveHint=True, idempotentHint=True
+        )
+    )
+    async def mspbotsagent_update_agent(
+        agent_id: Annotated[str, Field(description="Agent to change.")],
+        name: Annotated[str | None, Field(description="New agent name.")] = None,
+        description: Annotated[
+            str | None, Field(description="New description; empty clears it.")
+        ] = None,
+        instructions: Annotated[
+            str | None,
+            Field(description="The agent's full SOP / instructions text. REPLACES the current text."),
+        ] = None,
+        settings: Annotated[
+            dict | None,
+            Field(
+                description=(
+                    "Settings to change, only the keys you send: model, toolCallLimit, "
+                    "recursionLimit, maxRunTimeSeconds, creditBudgetPerRun, "
+                    "circuitBreakerMaxRuns, circuitBreakerWindowMinutes, allowReply, "
+                    'askMemory. Example: {"toolCallLimit": 30}'
+                )
+            ),
+        ] = None,
+        skills: Annotated[
+            list[dict] | None,
+            Field(
+                description=(
+                    "Skills to turn on or off: [{ref, enabled, type}], ref and type "
+                    "from mspbotsagent_list_agent_skills (type defaults to org)."
+                )
+            ),
+        ] = None,
+        version_note: Annotated[
+            str | None,
+            Field(description="Short note shown with the change in the agent's version history."),
+        ] = None,
+    ) -> str:
+        """Change an existing agent's instructions, skills or settings. It edits the LIVE agent.
+
+        WRITE TOOL. The change is saved immediately, including for an agent that
+        is switched on, and applies from the agent's next run. There is no draft
+        and no publish step; the platform records the change in the agent's
+        version history as made through the MCP connector, so it can be compared
+        with the previous version.
+
+        What can change: instructions (the SOP text, replaced whole), name,
+        description, settings (a fixed list, see settings), and skills on/off.
+        Send only what you want to change. Switching the agent on or off is not
+        possible here; do that in the MSPbots platform. Permissions, evaluation,
+        approval, owners and triggers have their own tools.
+
+        Never update one agent from two calls at once. Returns the updated agent
+        and, when skills were sent, one result per skill.
+        """
+        client = client_factory()
+        if client is None:
+            return NO_TOKEN
+
+        body: dict = {}
+        if name is not None:
+            body["name"] = name
+        if description is not None:
+            body["description"] = description
+        if instructions is not None:
+            body["prompt"] = instructions
+        if settings:
+            body.update(settings)
+        if not body and not skills:
+            return error_envelope(
+                "invalid_argument",
+                "Provide at least one of: name, description, instructions, settings, skills.",
+                False,
+            )
+        problem = _update_agent_problem(settings, skills)
+        if problem:
+            return error_envelope("invalid_argument", problem, False)
+        if version_note is not None and body:
+            body["versionNote"] = version_note
+
+        agent = None
+        if body:
+            try:
+                agent = await client.put(f"/api/agents/{agent_id}", body)
+            except AgentError as e:
+                return e.to_envelope()
+
+        results = []
+        for entry in skills or []:
+            skill_body = {
+                "ref": entry["ref"],
+                "enabled": entry["enabled"],
+                "type": entry.get("type", "org"),
+            }
+            try:
+                reply = await client.put(f"/api/agents/{agent_id}/skills", skill_body)
+            except AgentError as e:
+                results.append({"ref": entry["ref"], "ok": False, "error": e.message})
+                continue
+            # A missing agent or an unresolvable ref comes back as HTTP 200 with success=false.
+            if isinstance(reply, dict) and reply.get("success") is False:
+                results.append({"ref": entry["ref"], "ok": False, "error": str(reply.get("error") or "not applied")})
+            else:
+                results.append({"ref": entry["ref"], "ok": True, "result": reply})
+
+        out: dict = {"agent": agent} if agent is not None else {}
+        if skills:
+            out["skills"] = results
+        return dump_json(out)
