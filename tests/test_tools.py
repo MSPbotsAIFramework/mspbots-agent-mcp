@@ -11,7 +11,11 @@ from mcp.server.fastmcp import FastMCP
 from mspbots_agent_mcp.api_client import AgentError
 from mspbots_agent_mcp.config import Settings
 from mspbots_agent_mcp.server import create_mcp_server
-from mspbots_agent_mcp.tools.agents import _invalid_bare_tool_ids, _normalize_legacy_tool_keys
+from mspbots_agent_mcp.tools.agents import (
+    _invalid_bare_tool_ids,
+    _normalize_legacy_tool_keys,
+    _update_agent_problem,
+)
 
 # name -> (required params, expected annotation hint set to True)
 EXPECTED_TOOLS = {
@@ -40,6 +44,7 @@ EXPECTED_TOOLS = {
     "mspbotsagent_upsert_agent_permissions": ({"agent_id"}, {"idempotentHint"}),
     "mspbotsagent_get_agent_evaluation": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_upsert_agent_evaluation": ({"agent_id", "rules"}, {"idempotentHint"}),
+    "mspbotsagent_update_agent": ({"agent_id"}, {"destructiveHint", "idempotentHint"}),
     "mspbotsagent_get_agent_approval": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_upsert_agent_approval": ({"agent_id", "rules"}, {"idempotentHint"}),
     # SOP author
@@ -145,6 +150,9 @@ async def test_tools_list_snapshot():
         "mspbotsagent_set_sop_section_visibility",
         "mspbotsagent_set_agent_twilio_tenant_config",
         "mspbotsagent_get_sop_data_sources",
+        # PRD-22150: states the live-write / next-run / what-can-change / on-off rules (AC2, AC4)
+        # that a client shows next to its approval prompt; trimming would drop them.
+        "mspbotsagent_update_agent",
     }
     for name, (expected_required, expected_hints) in EXPECTED_TOOLS.items():
         tool = by_name[name]
@@ -443,3 +451,29 @@ async def test_upsert_agent_evaluation_sends_rules_with_rubric():
     )
     assert captured["path"] == "/api/agents/a1"
     assert captured["body"] == {"review": {"rules": rules, "max_iterations": 1}}
+
+
+@pytest.mark.asyncio
+async def test_update_agent_is_declared_a_write_tool():
+    """PRD-22150 AC1/AC2: clients list it under write/delete tools and say what it does."""
+    tools = {t.name: t for t in await create_mcp_server(Settings()).list_tools()}
+    tool = tools["mspbotsagent_update_agent"]
+    assert tool.annotations.readOnlyHint is False
+    assert tool.annotations.destructiveHint is True
+    text = (tool.description or "").lower()
+    for phrase in ("live agent", "switched on", "next run", "instructions", "skills", "settings"):
+        assert phrase in text, phrase
+    assert len((tool.description or "").strip().splitlines()[0]) <= 100
+
+
+@pytest.mark.asyncio
+async def test_update_agent_has_no_active_parameter():
+    """PRD-22150 AC4: the on/off switch is not reachable from the tool."""
+    tools = {t.name: t for t in await create_mcp_server(Settings()).list_tools()}
+    schema = tools["mspbotsagent_update_agent"].inputSchema
+    assert not {"active", "enabled"} & set(schema["properties"])
+    assert _update_agent_problem({"active": False}, None)
+    assert _update_agent_problem({"toolCallLimit": 30, "owners": []}, None)
+    assert _update_agent_problem({"toolCallLimit": 30, "allowReply": True}, None) is None
+    assert _update_agent_problem(None, [{"ref": "s", "enabled": False}]) is None
+    assert _update_agent_problem(None, [{"ref": "s"}])
