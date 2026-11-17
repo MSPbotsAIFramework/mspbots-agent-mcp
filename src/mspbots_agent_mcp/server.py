@@ -1,5 +1,7 @@
 import contextvars
+import inspect
 from collections.abc import Callable
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -94,6 +96,39 @@ class GatewayTokenMiddleware:
             _gateway_creds_var.reset(ctx_token)
 
 
+class _DedentedDocs:
+    """Thin registration proxy that dedents a tool's docstring.
+
+    FastMCP ships ``fn.__doc__`` to clients verbatim (``func_doc = description
+    or fn.__doc__`` in mcp/server/fastmcp/tools/base.py), so every line of an
+    indented docstring carries its eight leading spaces into ``tools/list``.
+    That is roughly a tenth of this server's description bytes, paid by every
+    client on every handshake, and it also made the vendor-MCP SOP's 500-char
+    description budget impossible to hold: the budget is about the text an
+    author writes, not about where Python happens to put it in the file.
+
+    Dedenting once, here, means the client and tests/test_tools.py both see
+    the description as written. Only ``mcp.tool`` is intercepted; every other
+    attribute is the real server's.
+    """
+
+    def __init__(self, mcp: FastMCP) -> None:
+        self._mcp = mcp
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._mcp, name)
+
+    def tool(self, *args: Any, **kwargs: Any) -> Any:
+        register_tool = self._mcp.tool(*args, **kwargs)
+
+        def decorator(fn: Any) -> Any:
+            if fn.__doc__:
+                fn.__doc__ = inspect.cleandoc(fn.__doc__)
+            return register_tool(fn)
+
+        return decorator
+
+
 def create_mcp_server(settings: Settings) -> FastMCP:
     """Build the FastMCP server instance and register all Agent tools."""
     # DNS-rebinding protection is a browser-oriented safeguard that rejects
@@ -140,6 +175,9 @@ def create_mcp_server(settings: Settings) -> FastMCP:
     )
 
     client_factory: Callable[[], AgentClient | None] = lambda: get_client_from_context(settings)
+    # Every register() call below goes through the proxy so the descriptions
+    # that reach clients are dedented -- see _DedentedDocs.
+    registrar = _DedentedDocs(mcp)
 
     from .tools import (
         agents,
@@ -152,16 +190,16 @@ def create_mcp_server(settings: Settings) -> FastMCP:
         usage,
     )
 
-    connectors.register(mcp, client_factory)
-    triggers.register(mcp, client_factory)
-    agents.register(mcp, client_factory)
-    sop_author.register(mcp, client_factory)
-    sops.register(mcp, client_factory)
-    twilio_tenant_config.register(mcp, client_factory)
+    connectors.register(registrar, client_factory)
+    triggers.register(registrar, client_factory)
+    agents.register(registrar, client_factory)
+    sop_author.register(registrar, client_factory)
+    sops.register(registrar, client_factory)
+    twilio_tenant_config.register(registrar, client_factory)
     # Agent-skill tools (mspbotsagent_list/create/update/delete/set_agent_skill*) are
     # temporarily hidden from external clients. The implementation stays in
     # tools/skills.py; uncomment this line and the `skills` import above to re-expose it.
-    # skills.register(mcp, client_factory)
-    usage.register(mcp, client_factory)
+    # skills.register(registrar, client_factory)
+    usage.register(registrar, client_factory)
 
     return mcp

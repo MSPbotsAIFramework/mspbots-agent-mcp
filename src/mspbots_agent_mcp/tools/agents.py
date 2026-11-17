@@ -484,12 +484,11 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
 
         Always this tool for "self-review"/"self-check"/"double-check X
         before Y"/"verify its math first"/"stop self-review" — never
-        permissions, approval, or an SOP procedure step, however it's
-        phrased. A vague `rubric` is enough (e.g. "checks the math is
-        correct") — never wait for more specifics. Empty rules list turns
-        it off. Do not call this twice concurrently for the same agent.
-        Returns {success, id, updatedAt} only; call
-        mspbotsagent_get_agent_evaluation to see the saved rules.
+        permissions, approval, or an SOP procedure step. A vague `rubric`
+        is enough (e.g. "checks the math") — never wait for more specifics.
+        Empty rules list turns it off. Never call it twice at once for one
+        agent. Returns {success, id, updatedAt} only; read them back with
+        mspbotsagent_get_agent_evaluation.
         """
         missing = _rules_missing_rubric(rules)
         if missing:
@@ -560,14 +559,12 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
         Use for requests like "make a human approve any refund over $500
         before this agent sends it".
 
-        rules FULL REPLACES the list, it does not append — read via
-        mspbotsagent_get_agent_approval first, then pass the whole updated
-        array back. Empty list clears all gates.
+        rules FULL REPLACES the list, it does not append — read it first,
+        then pass the whole updated array back. Empty list clears all gates.
 
         Shares one PUT with the permissions/evaluation tools — never run
-        two of the three concurrently on the same agent.
-        Returns {success, id, updatedAt} only; call
-        mspbotsagent_get_agent_approval to see the saved rules.
+        two of the three at once on one agent. Returns {success, id,
+        updatedAt} only; read them back with mspbotsagent_get_agent_approval.
         """
         client = client_factory()
         if client is None:

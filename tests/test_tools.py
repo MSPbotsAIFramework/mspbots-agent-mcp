@@ -157,15 +157,27 @@ async def test_tools_list_snapshot():
         # PRD-22150: states the live-write / next-run / what-can-change / on-off rules (AC2, AC4)
         # that a client shows next to its approval prompt; trimming would drop them.
         "mspbotsagent_update_agent",
+        # PRD-22084: the two things an agent must know before calling it are both
+        # load-bearing and both cost words -- it is NOT idempotent (a blind retry
+        # of a timed-out call leaves a duplicate draft behind), and the agent it
+        # creates is off and cannot be switched on from here, by design rather
+        # than by omission (that is the card's own acceptance criterion). A
+        # client that reads neither either duplicates agents or waits for one to
+        # run that never will.
+        "mspbotsagent_upload_agent",
     }
+    # Collected, not asserted one at a time: a bare `assert` inside the loop
+    # stops at the first offender and hides the rest, which is how this budget
+    # silently went 10 tools over while the suite reported a single failure.
+    too_long = []
     for name, (expected_required, expected_hints) in EXPECTED_TOOLS.items():
         tool = by_name[name]
         required = set(tool.inputSchema.get("required", []))
         assert required == expected_required, f"{name}: required={required}"
 
         description = tool.description or ""
-        if name not in _LONG_DESCRIPTION_EXCEPTIONS:
-            assert len(description) <= 500, f"{name}: description too long ({len(description)})"
+        if name not in _LONG_DESCRIPTION_EXCEPTIONS and len(description) > 500:
+            too_long.append(f"{name} ({len(description)})")
         first_line = description.strip().splitlines()[0] if description.strip() else ""
         assert len(first_line) <= 100, f"{name}: first line too long: {first_line!r}"
         assert "API:" not in description, f"{name}: leaked implementation detail"
@@ -180,6 +192,27 @@ async def test_tools_list_snapshot():
                 if getattr(annotations, hint, None) is True:
                     actual_hints.add(hint)
         assert actual_hints == expected_hints, f"{name}: hints={actual_hints}"
+
+    assert not too_long, "descriptions over 500 chars: " + ", ".join(too_long)
+
+
+@pytest.mark.asyncio
+async def test_tool_descriptions_are_dedented():
+    """What ships to a client is the docstring's text, not its indentation.
+
+    FastMCP passes `fn.__doc__` straight through, so without the dedent in
+    create_mcp_server every line of every description carries its eight
+    leading spaces into tools/list -- ~10% of this server's description
+    bytes on every handshake, and it made the 500-char budget above measure
+    the file's layout instead of the text.
+    """
+    import inspect as _inspect
+
+    tools = await create_mcp_server(Settings()).list_tools()
+    assert tools
+    for tool in tools:
+        description = tool.description or ""
+        assert description == _inspect.cleandoc(description), f"{tool.name}: description not dedented"
 
 
 @pytest.mark.asyncio
