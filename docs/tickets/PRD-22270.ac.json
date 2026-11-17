@@ -135,10 +135,10 @@
     "tests": [
       "tests/test_schedule_resume.py"
     ],
-    "evidence": "Rework r2: regression for QA-NIGHT finding (comment 1600390000098971); added at design time, not run",
+    "evidence": "Rework r2 @ f67f5d8: tests/test_schedule_resume.py::test_tc10_*, test_tc11_* and tests/test_api_client.py run the real AgentClient._handle on the real endpoint bodies; all pass (uv run pytest: 114 passed, 8 skipped); same tests fail (8 failed) with the api_client.py fix stashed",
     "type": "auto",
     "priority": "P1",
-    "result": "untested",
+    "result": "pass",
     "data": "none (stubs only)",
     "data_ready": true
   },
@@ -151,10 +151,10 @@
       "tests/test_schedule_resume.py",
       "tests/test_api_client.py"
     ],
-    "evidence": "Rework r2: regression for QA-NIGHT finding (comment 1600390000098971); added at design time, not run",
+    "evidence": "Rework r2 @ f67f5d8: tests/test_schedule_resume.py::test_tc10_*, test_tc11_* and tests/test_api_client.py run the real AgentClient._handle on the real endpoint bodies; all pass (uv run pytest: 114 passed, 8 skipped); same tests fail (8 failed) with the api_client.py fix stashed",
     "type": "auto",
     "priority": "P1",
-    "result": "untested",
+    "result": "pass",
     "data": "none (stubs only)",
     "data_ready": true
   }
