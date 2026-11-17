@@ -195,6 +195,16 @@ class AgentClient:
                 pass
         return min(2**attempt, _MAX_BACKOFF_SECONDS)
 
+    @staticmethod
+    def _error_text(body: dict) -> Any:
+        # PRD-22270: platform endpoints put the text in `error` (string or {message}); others use `message`.
+        err = body.get("error")
+        if isinstance(err, dict):
+            err = err.get("message")
+        if isinstance(err, str) and err.strip():
+            return err
+        return body.get("message")
+
     def _handle(self, resp: httpx.Response) -> Any:
         if not resp.content:
             return None
@@ -203,7 +213,7 @@ class AgentClient:
         except ValueError:
             body = {"raw_response": resp.text}
         if resp.status_code >= 400:
-            message = body.get("message") if isinstance(body, dict) else str(body)
+            message = self._error_text(body) if isinstance(body, dict) else str(body)
             errors = body.get("errors") if isinstance(body, dict) else None
             if errors:
                 message = f"{message} | errors={errors}"
