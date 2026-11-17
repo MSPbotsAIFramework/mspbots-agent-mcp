@@ -24,6 +24,18 @@ _gateway_creds_var: contextvars.ContextVar[tuple[str, str, str, str] | None] = c
     "mspbots_agent_gateway_creds", default=None
 )
 
+# PRD-22270: (thread_id, agent_id) of the calling run, from X-Channel-Thread-Id /
+# X-Channel-Agent-Id (set by mb-platform-agentos on every MCP tool call). Both optional;
+# None when the caller sent neither. Only run-scoped tools (schedule_resume) need them.
+_caller_var: contextvars.ContextVar[tuple[str, str] | None] = contextvars.ContextVar(
+    "mspbots_agent_caller", default=None
+)
+
+
+def get_caller_from_context() -> tuple[str, str] | None:
+    """(thread_id, agent_id) of the calling run, or None when either header is missing."""
+    return _caller_var.get()
+
 
 def get_client_from_context(settings: Settings) -> AgentClient | None:
     """Resolve the active AgentClient for the current request context."""
@@ -72,6 +84,9 @@ class GatewayTokenMiddleware:
         # mb-platform-agent treats as non-exempt. Unlike the three headers above, a caller that
         # predates this change (or an MCP client that is not mspbots-agentos) must not be 401'd.
         run_origin = request.headers.get("x-channel-run-origin") or ""
+        # PRD-22270: optional too -- a caller without them is never 401'd.
+        thread_id = request.headers.get("x-channel-thread-id")
+        agent_id = request.headers.get("x-channel-agent-id")
         if not token or not tenant_id or not host:
             response = JSONResponse(
                 {
@@ -90,9 +105,11 @@ class GatewayTokenMiddleware:
             return
 
         ctx_token = _gateway_creds_var.set((token, host, tenant_id, run_origin))
+        caller_token = _caller_var.set((thread_id, agent_id) if thread_id and agent_id else None)
         try:
             await self.app(scope, receive, send)
         finally:
+            _caller_var.reset(caller_token)
             _gateway_creds_var.reset(ctx_token)
 
 
@@ -154,9 +171,9 @@ def create_mcp_server(settings: Settings) -> FastMCP:
             "mspbotsagent_list_agents/get_agent/upload_agent list/read/upload agents — upload "
             "creates an off draft only; "
             "mspbotsagent_*_agent_twilio_tenant_config manage the tenant-editable slice of an "
-            "agent's Twilio phone channel (greeting, language, transfer/idle, tts), not system "
-            "settings (credentials, prompts). Typical flow: check connectors, then policy or SOP, "
-            "then triggers. Credentials come only from request headers, never tool arguments."
+            "agent's Twilio phone channel, not system settings. Typical flow: check connectors, then policy or SOP, "
+            "then triggers. schedule_resume pauses the current run until a time. "
+            "Credentials come only from request headers, never tool arguments."
             # NOTE: the agent-skill tool group (mspbotsagent_*_agent_skill) is temporarily
             # disabled — see the commented-out skills.register() call below. Restore the
             # sentence "mspbotsagent_*_agent_skill manage an agent's private skills." here
@@ -184,6 +201,7 @@ def create_mcp_server(settings: Settings) -> FastMCP:
         connectors,
         # skills,  # temporarily not exposed externally
         sop_author,
+        schedule,
         sops,
         triggers,
         twilio_tenant_config,
@@ -201,5 +219,6 @@ def create_mcp_server(settings: Settings) -> FastMCP:
     # tools/skills.py; uncomment this line and the `skills` import above to re-expose it.
     # skills.register(registrar, client_factory)
     usage.register(registrar, client_factory)
+    schedule.register(registrar, client_factory, get_caller_from_context)
 
     return mcp

@@ -31,6 +31,8 @@ EXPECTED_TOOLS = {
     ),
     # usage (PRD-18216)
     "mspbotsagent_get_usage_overview": (set(), {"readOnlyHint"}),
+    # schedule (PRD-22270) -- exact name, no prefix: interruptOn matches on it
+    "schedule_resume": ({"key", "reason"}, {"idempotentHint"}),
     # triggers
     "mspbotsagent_list_triggers": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_upsert_trigger": (set(), set()),
