@@ -157,3 +157,45 @@ def test_tc7_caller_headers_reach_context_and_absence_is_not_401():
     assert get_caller_from_context() is None  # reset after the request
     seen, sent = _call_middleware([])
     assert seen["caller"] is None and sent[0]["status"] == 200
+
+
+class _RealHandleClient:
+    """Runs the real AgentClient response handling on a canned HTTP response (PRD-22270 TC10/TC11)."""
+
+    def __init__(self, status, body):
+        import httpx
+        from mspbots_agent_mcp.api_client import AgentClient
+
+        self._c, self._r = AgentClient.__new__(AgentClient), httpx.Response(status, json=body)
+
+    async def post(self, path, body, retries=None):
+        return self._c._handle(self._r)
+
+
+def _real(status, body):
+    return json.loads(run(_tool(_RealHandleClient(status, body))(key="k", reason="r", resume_in="3m")))
+
+
+def test_tc10_real_flag_off_body_is_not_available_agent_404_stays():
+    off = _real(404, {"success": False, "error": "Not found"})
+    assert off["error"]["code"] == "not_available"
+    other = _real(404, {"success": False, "error": "Agent not found"})
+    assert other["error"]["code"] == "not_found" and "Agent not found" in other["error"]["message"]
+
+
+@pytest.mark.parametrize(
+    "status,text,code",
+    [
+        (422, "date has no time", "invalid_argument"),
+        (422, "resume time is beyond the 90 day horizon", "invalid_argument"),
+        (429, "cap reached", "limit_reached"),
+        (403, "no access", "unauthorized"),
+    ],
+)
+def test_tc11_real_error_bodies_keep_text(status, text, code):
+    out = _real(status, {"success": False, "error": text})["error"]
+    assert out["code"] == code and text in out["message"] and "unknown error" not in out["message"]
+
+
+def test_tc11_message_field_still_works():
+    assert "legacy text" in _real(422, {"message": "legacy text"})["error"]["message"]
