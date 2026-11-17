@@ -126,5 +126,36 @@
     "evidence": "Manual INT case: needs PRD-20855 on INT with SCHEDULE_RESUME_CORE on and this MCP published; not run at design time",
     "data": "One test agent in tenant 2q created by the case (as user:tom.lan@2qmxyw.onmicrosoft.com), mspbots-agent connector enabled with schedule_resume allowed and in interruptOn; SCHEDULE_RESUME_CORE on in INT (as PRD-20855's cases assume)",
     "data_ready": true
+  },
+  {
+    "id": "TC10",
+    "ac": "AC5",
+    "dw": "DW5",
+    "text": "Given the platform's real flag-off body (HTTP 404 {\"success\":false,\"error\":\"Not found\"}) fed through the real AgentClient response handling (not a stubbed AgentError), Then the tool returns the not_available envelope; given the real 404 body {\"success\":false,\"error\":\"Agent not found\"}, Then the code stays not_found and the message is 'Agent not found'",
+    "tests": [
+      "tests/test_schedule_resume.py"
+    ],
+    "evidence": "Rework r2: regression for QA-NIGHT finding (comment 1600390000098971); added at design time, not run",
+    "type": "auto",
+    "priority": "P1",
+    "result": "untested",
+    "data": "none (stubs only)",
+    "data_ready": true
+  },
+  {
+    "id": "TC11",
+    "ac": "AC4",
+    "dw": "DW4",
+    "text": "Given the real error bodies of the endpoint (422 date with no time, 422 beyond horizon, 429 cap reached, 403) each carrying the text in the 'error' field, fed through the real AgentClient response handling, Then the tool's error message contains that text (never 'unknown error'); given a body that carries the text in 'message' (other platform endpoints), Then that text is still returned; given a body with 'errors' details, Then they are still appended",
+    "tests": [
+      "tests/test_schedule_resume.py",
+      "tests/test_api_client.py"
+    ],
+    "evidence": "Rework r2: regression for QA-NIGHT finding (comment 1600390000098971); added at design time, not run",
+    "type": "auto",
+    "priority": "P1",
+    "result": "untested",
+    "data": "none (stubs only)",
+    "data_ready": true
   }
 ]
