@@ -1,0 +1,130 @@
+[
+  {
+    "id": "TC1",
+    "ac": "AC1",
+    "dw": "DW1",
+    "type": "auto",
+    "text": "tools/list contains schedule_resume with required key and reason, the documented parameters, and no agent_id/thread_id parameter",
+    "tests": [
+      "tests/test_schedule_resume.py",
+      "tests/test_tools.py",
+      "tests/test_middleware.py"
+    ],
+    "data": "none (stubs only)",
+    "data_ready": true
+  },
+  {
+    "id": "TC2",
+    "ac": "AC2",
+    "dw": "DW2",
+    "type": "auto",
+    "text": "Given caller context (thread t1, agent a1) and a stub platform, When schedule_resume is called with resume_in='3m', key and reason, Then the stub receives POST /api/agents/a1/threads/t1/schedule-resume with exactly those fields and the tool returns the stub answer unchanged",
+    "tests": [
+      "tests/test_schedule_resume.py",
+      "tests/test_tools.py",
+      "tests/test_middleware.py"
+    ],
+    "data": "none (stubs only)",
+    "data_ready": true
+  },
+  {
+    "id": "TC3",
+    "ac": "AC3",
+    "dw": "DW3",
+    "type": "auto",
+    "text": "Given two calls with the same key, Then both post the same path with the same key (the endpoint moves the wait) and the second answer is returned unchanged",
+    "tests": [
+      "tests/test_schedule_resume.py",
+      "tests/test_tools.py",
+      "tests/test_middleware.py"
+    ],
+    "data": "none (stubs only)",
+    "data_ready": true
+  },
+  {
+    "id": "TC4",
+    "ac": "AC4",
+    "dw": "DW4",
+    "type": "auto",
+    "text": "Given the stub raises 422 (date with no time / beyond horizon), 429 (cap reached) or 403, Then the tool returns an error envelope carrying the endpoint message (429 code limit_reached, not retryable)",
+    "tests": [
+      "tests/test_schedule_resume.py",
+      "tests/test_tools.py",
+      "tests/test_middleware.py"
+    ],
+    "data": "none (stubs only)",
+    "data_ready": true
+  },
+  {
+    "id": "TC5",
+    "ac": "AC5",
+    "dw": "DW5",
+    "type": "auto",
+    "text": "Given the stub raises 404 'Not found' (feature flag off), Then the tool returns the not_available envelope; given 404 'Agent not found' the code stays not_found",
+    "tests": [
+      "tests/test_schedule_resume.py",
+      "tests/test_tools.py",
+      "tests/test_middleware.py"
+    ],
+    "data": "none (stubs only)",
+    "data_ready": true
+  },
+  {
+    "id": "TC6",
+    "ac": "AC6",
+    "dw": "DW4",
+    "type": "auto",
+    "text": "Given both or neither of resume_at/resume_in, a missing key or reason, or no thread/agent id in the caller context, Then an error envelope comes back and the stub is never called",
+    "tests": [
+      "tests/test_schedule_resume.py",
+      "tests/test_tools.py",
+      "tests/test_middleware.py"
+    ],
+    "data": "none (stubs only)",
+    "data_ready": true
+  },
+  {
+    "id": "TC7",
+    "ac": "AC1",
+    "dw": "DW1",
+    "type": "auto",
+    "text": "Through the ASGI app, X-Channel-Thread-Id and X-Channel-Agent-Id reach get_caller_from_context(), and a request without them is not rejected with 401",
+    "tests": [
+      "tests/test_schedule_resume.py",
+      "tests/test_tools.py",
+      "tests/test_middleware.py"
+    ],
+    "data": "none (stubs only)",
+    "data_ready": true
+  },
+  {
+    "id": "TC8",
+    "ac": "AC2",
+    "dw": "DW2",
+    "type": "manual",
+    "priority": "P1",
+    "text": "On INT, an agent with the mspbots-agent connector calls schedule_resume with resume_in 3 minutes: the run shows Scheduled and resumes about 3 minutes later in the same run; a second call with the same key and a later time moves the wait",
+    "precond": "Test agent as in data; SCHEDULE_RESUME_CORE on",
+    "steps": "1) Open the test agent's tool list and confirm schedule_resume is present. 2) Start a run whose instructions call schedule_resume(resume_in='3m', key='qa-22270-a', reason='qa'). 3) Watch the run status. 4) In a second run call it twice with the same key, the second time with resume_in='10m'.",
+    "expect": "Tool present; run shows Scheduled with a local resume time, then resumes in the same run about 3 minutes later; with the repeated key only one wait exists and it fires at the later time",
+    "result": "untested",
+    "evidence": "Manual INT case: needs PRD-20855 on INT with SCHEDULE_RESUME_CORE on and this MCP published; not run at design time",
+    "data": "One test agent in tenant 2q created by the case (as user:tom.lan@2qmxyw.onmicrosoft.com), mspbots-agent connector enabled with schedule_resume allowed and in interruptOn; SCHEDULE_RESUME_CORE on in INT (as PRD-20855's cases assume)",
+    "data_ready": true
+  },
+  {
+    "id": "TC9",
+    "ac": "AC4",
+    "dw": "DW4",
+    "type": "manual",
+    "priority": "P2",
+    "text": "On INT, a date with no time, a time beyond 90 days, and a full cap each come back as a readable error and the run shows no Scheduled state",
+    "precond": "Same test agent; cap case needs a disposable agent that can be driven to its cap",
+    "steps": "1) Call schedule_resume with resume_at='2026-12-01' (no time). 2) Call it with resume_in='120d'. 3) With the disposable agent at its cap, call it once more.",
+    "expect": "Each call returns an error message that says what was refused; the run list shows no new Scheduled run for the refused calls",
+    "result": "untested",
+    "evidence": "Manual INT case: needs PRD-20855 on INT with SCHEDULE_RESUME_CORE on and this MCP published; not run at design time",
+    "data": "One test agent in tenant 2q created by the case (as user:tom.lan@2qmxyw.onmicrosoft.com), mspbots-agent connector enabled with schedule_resume allowed and in interruptOn; SCHEDULE_RESUME_CORE on in INT (as PRD-20855's cases assume)",
+    "data_ready": true
+  }
+]
