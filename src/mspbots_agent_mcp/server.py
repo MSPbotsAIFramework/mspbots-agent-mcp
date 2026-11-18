@@ -203,6 +203,7 @@ def create_mcp_server(settings: Settings) -> FastMCP:
         sop_author,
         schedule,
         sops,
+        teams_channel,
         triggers,
         twilio_tenant_config,
         usage,
@@ -220,5 +221,6 @@ def create_mcp_server(settings: Settings) -> FastMCP:
     # skills.register(registrar, client_factory)
     usage.register(registrar, client_factory)
     schedule.register(registrar, client_factory, get_caller_from_context)
+    teams_channel.register(registrar, client_factory, get_caller_from_context)
 
     return mcp

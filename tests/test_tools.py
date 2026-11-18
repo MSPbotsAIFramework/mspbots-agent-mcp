@@ -33,6 +33,15 @@ EXPECTED_TOOLS = {
     "mspbotsagent_get_usage_overview": (set(), {"readOnlyHint"}),
     # schedule (PRD-22270) -- exact name, no prefix: interruptOn matches on it
     "schedule_resume": ({"key", "reason"}, {"idempotentHint"}),
+    # teams channel gate (PRD-22059)
+    "mspbotsagent_teams_channel_preview": (
+        {"team_id", "channel_id", "body"},
+        {"readOnlyHint", "idempotentHint"},
+    ),
+    "mspbotsagent_teams_channel_send": (
+        {"team_id", "channel_id", "body"},
+        set(),
+    ),
     # triggers
     "mspbotsagent_list_triggers": ({"agent_id"}, {"readOnlyHint"}),
     "mspbotsagent_upsert_trigger": (set(), set()),
