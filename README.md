@@ -172,6 +172,8 @@ belongs to one `agentId`.
 | `mspbotsagent_list_triggers` | List all of an agent's triggers (paginated) | `agent_id` (required), `page` (default 1), `page_size` (default 50) |
 | `mspbotsagent_upsert_trigger` | Create or modify a trigger (with `task_id` = modify, without = create) | `agent_id`, `task_id`, `name`, `prompt`, `type` (`recurring`/`event`), `enabled`, `expires_in_days`; recurring: `schedule` (cron, 1h minimum), `timezone`, `run`; event: `trigger_integration`, `trigger_events` |
 | `schedule_resume` | Pause the current run until a time, then resume it in the same run (same `key` again moves the wait) | `resume_at` or `resume_in` (exactly one), `key`, `reason`, `timezone`, `wake_on`, `cancel_on`, `ticket` |
+| `mspbotsagent_teams_channel_preview` | Check a Teams channel post through the platform's safety gate without posting (allowed / denied + reason + the rendered message; nothing is posted, logged or counted) | `team_id`, `channel_id`, `body`, `body_content_type`, `subject`, `importance`, `mention_user_ids` |
+| `mspbotsagent_teams_channel_send` | Post to a Teams channel through the safety gate: needs the agent's channel-send switch on, the channel on its list, the channel in the client's Microsoft 365 tenant, and under 20 posts/hour/channel; every attempt is logged | same as preview |
 | `mspbotsagent_delete_trigger` | Delete a trigger (cannot be undone) | `task_id` (required) |
 | `mspbotsagent_get_trigger_catalog` | List the integration + events combinations that are valid for event triggers | none |
 | `mspbotsagent_run_trigger` 🚫 | Run one trigger manually, right now (for testing or a catch-up run) — **currently not exposed** | `task_id` (required) |
