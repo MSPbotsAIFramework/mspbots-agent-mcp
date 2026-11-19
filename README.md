@@ -235,11 +235,11 @@ agent row.
 |---|---|---|
 | `mspbotsagent_list_agents` | List the caller's own tenant's agents: `id` / `name` / `status` / `active` / `owners` (read-only) | `search` (name/description/model substring), `page` (default 1), `page_size` (default 20, max 100) |
 | `mspbotsagent_get_agent` | Read one agent's full definition: name, description, model, prompt, `permission`, `interruptOn`, `review`, `approval`, `steps`/`toolCallLimit`/`recursionLimit`, status, `active`, `owners` (read-only) | `agent_id` (required) |
-| `mspbotsagent_upload_agent` | Upload a locally built agent definition as a new, inactive draft | `name` (required), `model` (required), `prompt`, `description`, `permission`, `interrupt_on`, `review` (`{rules, max_iterations}`), `approval` (`{rules}`), `steps`, `tool_call_limit`, `recursion_limit` |
+| `mspbotsagent_upload_agent` | Upload a locally built agent definition as a new, inactive draft | `name` (required), `model` (required), `prompt`, `description`, `permission`, `interrupt_on`, `review` (`{rules, max_iterations}`), `approval` (`{rules}`), `steps`, `tool_call_limit`, `recursion_limit`, `owners` (tenant user ids; required where the platform enforces owner assignment) |
 
 `permission`/`interrupt_on` accept the same shapes as the agent-policy tools above;
 omitting both lands the new agent on the platform's restricted default permission,
-not full autonomy. There is no `owners`, `msteams`, `twilio`, `baseUrl` or `apiKey`
+not full autonomy. There is no `msteams`, `twilio`, `baseUrl` or `apiKey`
 parameter — channel config and the BYO-LLM-gateway fields stay out of this tool's
 typed signature by construction, not by a runtime check.
 

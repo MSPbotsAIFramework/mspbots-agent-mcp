@@ -294,6 +294,16 @@ async def test_upload_agent_camel_cases_the_limit_fields():
     assert "recursion_limit" not in body
 
 
+@pytest.mark.asyncio
+async def test_upload_agent_sends_owners_as_user_id_objects_only_when_given():
+    client = _StubClient(post_response={"success": True, "data": {"id": "agt_x", "name": "qa", "model": "m"}})
+    await _call(client, "mspbotsagent_upload_agent", {"name": "a", "model": "m", "owners": ["u1", "u2"]})
+    await _call(client, "mspbotsagent_upload_agent", {"name": "b", "model": "m"})
+
+    assert client.posts[0][1]["owners"] == [{"userId": "u1"}, {"userId": "u2"}]
+    assert "owners" not in client.posts[1][1]
+
+
 # The platform's fail() path: HTTP 200, {"success": false, "error": "..."} -- a duplicate
 # name or similar rejection that AgentError's status-code mapping never sees.
 @pytest.mark.asyncio

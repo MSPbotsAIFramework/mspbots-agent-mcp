@@ -704,6 +704,15 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
         steps: Annotated[int | None, Field(description="Max reasoning steps per run.")] = None,
         tool_call_limit: Annotated[int | None, Field(description="Max tool calls per run.")] = None,
         recursion_limit: Annotated[int | None, Field(description="Max recursion depth per run.")] = None,
+        owners: Annotated[
+            list[str] | None,
+            Field(
+                description=(
+                    "User ids of the tenant who own the agent. Required by tenants/"
+                    "environments that enforce owner assignment; omit otherwise."
+                )
+            ),
+        ] = None,
     ) -> str:
         """Upload a locally built agent definition as a new, inactive draft in
         the caller's own tenant — at minimum a name and a model.
@@ -716,8 +725,8 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
         The created agent is switched off — it does not run and fires no
         trigger — until a person turns it on in the platform's Agents UI. No
         parameter here, now or after any future edit, can switch it on: this
-        tool has no `owners`, `msteams`, `twilio`, `baseUrl` or `apiKey`
-        parameter, by design, not by omission. It subsequently appears in
+        tool has no `msteams`, `twilio`, `baseUrl` or `apiKey` parameter, by
+        design, not by omission (`owners` only assigns ownership). It subsequently appears in
         mspbotsagent_list_agents and the platform's own Agents list.
         """
         if not name or not name.strip():
@@ -771,6 +780,8 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             body["toolCallLimit"] = tool_call_limit
         if recursion_limit is not None:
             body["recursionLimit"] = recursion_limit
+        if owners:
+            body["owners"] = [{"userId": u} for u in owners]
 
         try:
             result = await client.post("/api/agents", body)
