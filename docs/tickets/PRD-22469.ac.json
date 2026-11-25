@@ -1,0 +1,160 @@
+[
+  {
+    "id": "TC1",
+    "ac": "AC1",
+    "dw": "DW1",
+    "type": "auto",
+    "text": "Given the server is created, When its instructions are read, Then they contain the lead line and the eight points exactly as the card gives them, in order, and the sentence telling the builder to copy them word for word as the last section 'How to write your final reply'",
+    "tests": [
+      "tests/test_final_reply_rule.py",
+      "tests/test_tools.py"
+    ],
+    "priority": "P1",
+    "data": "none (in-process)",
+    "data_ready": true
+  },
+  {
+    "id": "TC2",
+    "ac": "AC2",
+    "dw": "DW2",
+    "type": "auto",
+    "text": "Given tools/list, Then upload_agent and update_agent each have one new sentence of at most 200 characters in the description and one in prompt / instructions naming the section, and no other tool differs from the pinned snapshot",
+    "tests": [
+      "tests/test_final_reply_rule.py",
+      "tests/test_tools.py"
+    ],
+    "priority": "P1",
+    "data": "none (in-process)",
+    "data_ready": true
+  },
+  {
+    "id": "TC3",
+    "ac": "AC2",
+    "dw": "DW2",
+    "type": "manual",
+    "text": "Given tools/list captured from main and from the branch, Then the diff shows only those four strings, and uv run pytest passes",
+    "priority": "P1",
+    "data": "none (local)",
+    "data_ready": true,
+    "notes": "Run on INT in the test stage; see the Test cases section of docs/tickets/PRD-22469.md",
+    "precond": "none (local)",
+    "steps": [
+      "Capture tools/list from main and from dev/PRD-22469 (in-process list_tools)",
+      "Diff the two captures",
+      "Run uv run pytest on the branch"
+    ],
+    "expect": "Only the description and the prompt / instructions parameter of upload_agent and update_agent differ; every other tool is identical; all tests pass"
+  },
+  {
+    "id": "TC4",
+    "ac": "AC1",
+    "dw": "DW1",
+    "type": "manual",
+    "text": "Given the INT server, When the MCP initialize answer is read as a client receives it, Then it holds the eight points and the copy sentence",
+    "priority": "P1",
+    "data": "INT MCP URL, a test tenant and the API key owner for the Claude Code builds",
+    "data_ready": false,
+    "data_needs": "INT MCP URL and the API key owner for the test tenant",
+    "data_from": "Tom Lan (asked on the ticket, 2026-11-25 07:49Z)",
+    "notes": "Run on INT in the test stage; see the Test cases section of docs/tickets/PRD-22469.md",
+    "precond": "INT MCP URL, a test tenant and the API key owner for the Claude Code builds",
+    "steps": [
+      "Connect an MCP client to the INT server and read the initialize answer's instructions",
+      "Compare the lead line and each of the eight points with the ticket text"
+    ],
+    "expect": "The instructions hold the lead line and all eight points in order and wording, and the sentence to copy the rule word for word as the last section"
+  },
+  {
+    "id": "TC5",
+    "ac": "AC3",
+    "dw": "DW3",
+    "type": "manual",
+    "text": "Given three fresh Claude Code sessions on the INT MCP, each asked to build and upload the ticket-list agent, Then all three prompts (read back with get_agent) end with the section holding all eight points and the agents are off",
+    "priority": "P1",
+    "data": "INT MCP URL, a test tenant and the API key owner for the Claude Code builds",
+    "data_ready": false,
+    "data_needs": "INT MCP URL, test tenant and API key owner",
+    "data_from": "Tom Lan (asked on the ticket, 2026-11-25 07:49Z)",
+    "notes": "Run on INT in the test stage; see the Test cases section of docs/tickets/PRD-22469.md",
+    "precond": "INT MCP URL, a test tenant and the API key owner for the Claude Code builds",
+    "steps": [
+      "Open a fresh Claude Code session connected only to the INT MCP",
+      "Ask: Build an agent that takes a pasted list of support tickets and tells me which ones have no assignee, and upload it",
+      "Read the uploaded agent back with mspbotsagent_get_agent",
+      "Repeat in two more fresh sessions"
+    ],
+    "expect": "In all three agents the prompt ends with a 'How to write your final reply' section holding all eight points, and the agent is off; if one fails, record which point is missing"
+  },
+  {
+    "id": "TC6",
+    "ac": "AC4",
+    "dw": "DW4",
+    "type": "manual",
+    "text": "Given one TC5 agent switched on and run on a pasted list of five tickets (two with no assignee, one with no due date), Then the final reply starts with one plain result sentence, says 'No changes made.', shows a markdown table of at most 6 columns with empty assignee as 'unassigned' or '—', and has no null, undefined, NaN, raw JSON, tool name or id; the agent is switched off afterwards",
+    "priority": "P1",
+    "data": "TC5 agents plus INT AI budget on the test tenant",
+    "data_ready": false,
+    "data_needs": "INT AI budget on the test tenant (used up on 2026-11-25), plus the TC5 data",
+    "data_from": "Tom Lan (asked on the ticket, 2026-11-25 07:49Z)",
+    "notes": "Run on INT in the test stage; see the Test cases section of docs/tickets/PRD-22469.md",
+    "precond": "TC5 agents plus INT AI budget on the test tenant",
+    "steps": [
+      "Switch one TC5 agent on in the test tenant",
+      "Run it on a pasted list of five tickets, two with no assignee and one with no due date",
+      "Read the final reply",
+      "Switch the agent off"
+    ],
+    "expect": "The reply starts with one plain sentence stating the result, says 'No changes made.', shows the tickets in a markdown table of at most 6 columns with empty assignee as 'unassigned' or '—', and contains no null, undefined, NaN, raw JSON, tool name or id"
+  },
+  {
+    "id": "TC7",
+    "ac": "AC5",
+    "dw": "DW5",
+    "type": "manual",
+    "text": "Given Claude Code asked to change one TC5 agent ('Also tell me which ticket is the oldest.'), Then the saved instructions contain the new request and still end with the section and all eight points",
+    "priority": "P1",
+    "data": "TC5 agents; update_agent (PRD-22150) on INT",
+    "data_ready": false,
+    "data_needs": "PRD-22150 released on INT, plus the TC5 data",
+    "data_from": "PRD-22150 release; Tom Lan for the tenant",
+    "notes": "Run on INT in the test stage; see the Test cases section of docs/tickets/PRD-22469.md",
+    "precond": "TC5 agents; update_agent (PRD-22150) on INT",
+    "steps": [
+      "In Claude Code on the INT MCP ask to change one TC5 agent: Also tell me which ticket is the oldest.",
+      "Read the agent back with mspbotsagent_get_agent"
+    ],
+    "expect": "The saved instructions contain the new request and still end with the 'How to write your final reply' section with all eight points"
+  },
+  {
+    "id": "TC8",
+    "ac": "AC6",
+    "dw": "DW6",
+    "type": "auto",
+    "text": "Given upload_agent and update_agent called with text that has no such section, Then the platform stub receives exactly that text",
+    "tests": [
+      "tests/test_final_reply_rule.py"
+    ],
+    "priority": "P1",
+    "data": "none (in-process)",
+    "data_ready": true
+  },
+  {
+    "id": "TC9",
+    "ac": "AC6",
+    "dw": "DW6",
+    "type": "manual",
+    "text": "Given an agent uploaded directly through the tool with a prompt that has no section, and an agent that existed before the release, Then the stored prompt equals the text sent and the older agent's get_agent answer is identical before and after",
+    "priority": "P1",
+    "data": "INT MCP URL, a test tenant and the API key owner for the Claude Code builds",
+    "data_ready": false,
+    "data_needs": "INT MCP URL, test tenant and API key owner",
+    "data_from": "Tom Lan (asked on the ticket, 2026-11-25 07:49Z)",
+    "notes": "Run on INT in the test stage; see the Test cases section of docs/tickets/PRD-22469.md",
+    "precond": "INT MCP URL, a test tenant and the API key owner for the Claude Code builds",
+    "steps": [
+      "Upload through the tool directly an agent whose prompt has no such section and read it back",
+      "Read an agent that existed before the release with get_agent before and after the release and compare"
+    ],
+    "expect": "The stored prompt is exactly the text sent with nothing added; the older agent's answer is identical before and after"
+  }
+]
