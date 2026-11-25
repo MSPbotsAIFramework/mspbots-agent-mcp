@@ -230,7 +230,8 @@ async def test_tool_descriptions_are_dedented():
 async def test_service_instructions_present_and_bounded():
     mcp = create_mcp_server(Settings())
     assert mcp.instructions
-    assert len(mcp.instructions) <= 1500
+    # PRD-22469: raised from 1500 to fit the "output for people" rule (about 1.4k chars).
+    assert len(mcp.instructions) <= 3200
 
 
 @pytest.mark.parametrize(

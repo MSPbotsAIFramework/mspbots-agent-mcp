@@ -11,7 +11,9 @@
     ],
     "priority": "P1",
     "data": "none (in-process)",
-    "data_ready": true
+    "data_ready": true,
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_final_reply_rule.py tests/test_tools.py: pass (instructions end with BUILDER_PARAGRAPH, rule equals pinned card text, 9 lines)"
   },
   {
     "id": "TC2",
@@ -25,7 +27,9 @@
     ],
     "priority": "P1",
     "data": "none (in-process)",
-    "data_ready": true
+    "data_ready": true,
+    "result": "pass",
+    "evidence": "uv run pytest: pass; sentences 112/87/127/111 chars, heading present, other tools carry no pointer"
   },
   {
     "id": "TC3",
@@ -43,7 +47,9 @@
       "Diff the two captures",
       "Run uv run pytest on the branch"
     ],
-    "expect": "Only the description and the prompt / instructions parameter of upload_agent and update_agent differ; every other tool is identical; all tests pass"
+    "expect": "Only the description and the prompt / instructions parameter of upload_agent and update_agent differ; every other tool is identical; all tests pass",
+    "result": "pass",
+    "evidence": "In-process list_tools on origin/main (3b13393) vs branch: changed tools = [update_agent, upload_agent] only, no tools added or removed; full suite 134 passed, 8 skipped (local, dev07)"
   },
   {
     "id": "TC4",
@@ -62,7 +68,9 @@
       "Connect an MCP client to the INT server and read the initialize answer's instructions",
       "Compare the lead line and each of the eight points with the ticket text"
     ],
-    "expect": "The instructions hold the lead line and all eight points in order and wording, and the sentence to copy the rule word for word as the last section"
+    "expect": "The instructions hold the lead line and all eight points in order and wording, and the sentence to copy the rule word for word as the last section",
+    "result": "blocked",
+    "evidence": "Not run in dev: needs INT MCP URL / test tenant / API key owner (data_ready false, asked of Tom on the ticket); runs in the INT test stage"
   },
   {
     "id": "TC5",
@@ -83,7 +91,9 @@
       "Read the uploaded agent back with mspbotsagent_get_agent",
       "Repeat in two more fresh sessions"
     ],
-    "expect": "In all three agents the prompt ends with a 'How to write your final reply' section holding all eight points, and the agent is off; if one fails, record which point is missing"
+    "expect": "In all three agents the prompt ends with a 'How to write your final reply' section holding all eight points, and the agent is off; if one fails, record which point is missing",
+    "result": "blocked",
+    "evidence": "Not run in dev: needs INT MCP URL / test tenant / API key owner (data_ready false, asked of Tom on the ticket); runs in the INT test stage"
   },
   {
     "id": "TC6",
@@ -104,7 +114,9 @@
       "Read the final reply",
       "Switch the agent off"
     ],
-    "expect": "The reply starts with one plain sentence stating the result, says 'No changes made.', shows the tickets in a markdown table of at most 6 columns with empty assignee as 'unassigned' or '—', and contains no null, undefined, NaN, raw JSON, tool name or id"
+    "expect": "The reply starts with one plain sentence stating the result, says 'No changes made.', shows the tickets in a markdown table of at most 6 columns with empty assignee as 'unassigned' or '—', and contains no null, undefined, NaN, raw JSON, tool name or id",
+    "result": "blocked",
+    "evidence": "Not run in dev: needs INT MCP URL / test tenant / API key owner (data_ready false, asked of Tom on the ticket); runs in the INT test stage"
   },
   {
     "id": "TC7",
@@ -123,7 +135,9 @@
       "In Claude Code on the INT MCP ask to change one TC5 agent: Also tell me which ticket is the oldest.",
       "Read the agent back with mspbotsagent_get_agent"
     ],
-    "expect": "The saved instructions contain the new request and still end with the 'How to write your final reply' section with all eight points"
+    "expect": "The saved instructions contain the new request and still end with the 'How to write your final reply' section with all eight points",
+    "result": "blocked",
+    "evidence": "Not run in dev: needs INT MCP URL / test tenant / API key owner (data_ready false, asked of Tom on the ticket); runs in the INT test stage"
   },
   {
     "id": "TC8",
@@ -136,7 +150,9 @@
     ],
     "priority": "P1",
     "data": "none (in-process)",
-    "data_ready": true
+    "data_ready": true,
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_final_reply_rule.py::test_prompt_without_the_section_is_stored_exactly_as_sent: pass (POST/PUT body prompt == text sent)"
   },
   {
     "id": "TC9",
@@ -155,6 +171,8 @@
       "Upload through the tool directly an agent whose prompt has no such section and read it back",
       "Read an agent that existed before the release with get_agent before and after the release and compare"
     ],
-    "expect": "The stored prompt is exactly the text sent with nothing added; the older agent's answer is identical before and after"
+    "expect": "The stored prompt is exactly the text sent with nothing added; the older agent's answer is identical before and after",
+    "result": "blocked",
+    "evidence": "Not run in dev: needs INT MCP URL / test tenant / API key owner (data_ready false, asked of Tom on the ticket); runs in the INT test stage"
   }
 ]
