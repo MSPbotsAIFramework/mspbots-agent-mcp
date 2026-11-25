@@ -11,6 +11,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .api_client import AgentClient
 from .config import Settings
+from .final_reply_rule import BUILDER_PARAGRAPH
 
 # Per-request credential isolation via contextvars.
 # GatewayTokenMiddleware sets this before the MCP handler runs.
@@ -173,7 +174,8 @@ def create_mcp_server(settings: Settings) -> FastMCP:
             "mspbotsagent_*_agent_twilio_tenant_config manage the tenant-editable slice of an "
             "agent's Twilio phone channel, not system settings. Typical flow: check connectors, then policy or SOP, "
             "then triggers. schedule_resume pauses the current run until a time. "
-            "Credentials come only from request headers, never tool arguments."
+            "Credentials come only from request headers, never tool arguments.\n\n"
+            + BUILDER_PARAGRAPH
             # NOTE: the agent-skill tool group (mspbotsagent_*_agent_skill) is temporarily
             # disabled — see the commented-out skills.register() call below. Restore the
             # sentence "mspbotsagent_*_agent_skill manage an agent's private skills." here

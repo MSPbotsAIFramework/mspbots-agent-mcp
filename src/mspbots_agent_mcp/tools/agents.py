@@ -7,6 +7,13 @@ from pydantic import Field
 
 from .._json import dump_json, error_envelope
 from ..api_client import AgentClient, AgentError
+from ..final_reply_rule import (
+    INSTRUCTIONS_PARAM_SENTENCE,
+    PROMPT_PARAM_SENTENCE,
+    UPDATE_DESCRIPTION_SENTENCE,
+    UPLOAD_DESCRIPTION_SENTENCE,
+    append_to_doc,
+)
 from ._common import NO_TOKEN
 
 # Permissions, evaluation, and human-in-loop approval all live on the SAME
@@ -657,10 +664,11 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
     # upload_agent is neither read-only, nor idempotent (see docstring), nor destructive — no
     # hint fits, the same category mspbotsagent_upsert_trigger's create-shaped half is already in.
     @mcp.tool()
+    @append_to_doc(UPLOAD_DESCRIPTION_SENTENCE)
     async def mspbotsagent_upload_agent(
         name: Annotated[str, Field(description="Agent name — required, must be unique in the tenant.")],
         model: Annotated[str, Field(description='Model id, e.g. "azure/gpt-5.4" — required.')],
-        prompt: Annotated[str | None, Field(description="System prompt / instructions.")] = None,
+        prompt: Annotated[str | None, Field(description=f"System prompt / instructions. {PROMPT_PARAM_SENTENCE}")] = None,
         description: Annotated[str | None, Field(description="Short description.")] = None,
         permission: Annotated[
             dict | None,
@@ -803,6 +811,7 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
             readOnlyHint=False, destructiveHint=True, idempotentHint=True
         )
     )
+    @append_to_doc(UPDATE_DESCRIPTION_SENTENCE)
     async def mspbotsagent_update_agent(
         agent_id: Annotated[str, Field(description="Agent to change.")],
         name: Annotated[str | None, Field(description="New agent name.")] = None,
@@ -811,7 +820,12 @@ def register(mcp: FastMCP, client_factory: Callable[[], AgentClient | None]) -> 
         ] = None,
         instructions: Annotated[
             str | None,
-            Field(description="The agent's full SOP / instructions text. REPLACES the current text."),
+            Field(
+                description=(
+                    "The agent's full SOP / instructions text. REPLACES the current text. "
+                    + INSTRUCTIONS_PARAM_SENTENCE
+                )
+            ),
         ] = None,
         settings: Annotated[
             dict | None,
